@@ -1,0 +1,13 @@
+.git
+.gitignore
+README.md
+server*.log
+socketio-*.log
+backend/.env
+backend/venv
+backend/.cache
+backend/__pycache__
+frontend/__pycache__
+**/__pycache__
+*.pyc
+*.pyo
