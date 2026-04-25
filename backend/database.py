@@ -166,6 +166,24 @@ def init_db():
         );
     """)
 
+    # Performance indexes for the most common production queries.
+    for sql in [
+        "CREATE INDEX IF NOT EXISTS idx_inquiries_location_id ON inquiries(location_id)",
+        "CREATE INDEX IF NOT EXISTS idx_inquiries_course_id ON inquiries(course_id)",
+        "CREATE INDEX IF NOT EXISTS idx_inquiries_status ON inquiries(status)",
+        "CREATE INDEX IF NOT EXISTS idx_inquiries_inquiry_date ON inquiries(inquiry_date DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_inquiries_followup_date ON inquiries(followup_date)",
+        "CREATE INDEX IF NOT EXISTS idx_inquiries_location_status_followup ON inquiries(location_id, status, followup_date)",
+        "CREATE INDEX IF NOT EXISTS idx_inquiries_course_inquiry_date ON inquiries(course_id, inquiry_date DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_inquiries_location_inquiry_date ON inquiries(location_id, inquiry_date DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_followups_inquiry_id_created_at ON followups(inquiry_id, created_at DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_notifications_role_read_created_at ON notifications(target_role, is_read, created_at DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_courses_location_position ON courses(location_id, position, created_at)",
+        "CREATE INDEX IF NOT EXISTS idx_locations_position_created_at ON locations(position, created_at)",
+        "CREATE INDEX IF NOT EXISTS idx_offers_location_active_valid_to ON offers(location_id, is_active, valid_to)",
+    ]:
+        cur.execute(sql)
+
     # Safe migrations for existing DBs
     for sql in [
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS failed_login_attempts INTEGER NOT NULL DEFAULT 0",

@@ -48,32 +48,21 @@ def index():
     cur = conn.cursor()
     cur.execute(base, params)
     inquiries = cur.fetchall()
-
-    def _count(extra_sql, extra_params):
-        conn2 = get_db()
-        cur2 = conn2.cursor()
-        q = """
-            SELECT COUNT(*) AS c
-            FROM inquiries i
-            WHERE i.status='Open' AND i.followup_date IS NOT NULL
-        """
-        q_params = []
-        if role == "teacher" and loc_id:
-            q += " AND i.location_id=%s"
-            q_params.append(loc_id)
-        q += extra_sql
-        q_params.extend(extra_params)
-        cur2.execute(q, q_params)
-        count = cur2.fetchone()["c"]
-        close_db(conn2, commit=False)
-        return count
-
-    counts = {
-        "today": _count(" AND i.followup_date = %s", [today]),
-        "overdue": _count(" AND i.followup_date < %s", [today]),
-        "upcoming": _count(" AND i.followup_date > %s", [today]),
-        "all": _count("", []),
-    }
+    count_query = """
+        SELECT
+            COUNT(*) FILTER (WHERE i.followup_date = %s) AS today,
+            COUNT(*) FILTER (WHERE i.followup_date < %s) AS overdue,
+            COUNT(*) FILTER (WHERE i.followup_date > %s) AS upcoming,
+            COUNT(*) AS all
+        FROM inquiries i
+        WHERE i.status='Open' AND i.followup_date IS NOT NULL
+    """
+    count_params = [today, today, today]
+    if role == "teacher" and loc_id:
+        count_query += " AND i.location_id=%s"
+        count_params.append(loc_id)
+    cur.execute(count_query, count_params)
+    counts = cur.fetchone()
 
     close_db(conn, commit=False)
     return render_template("followup/index.html", inquiries=inquiries, view=view, counts=counts, today=today)
