@@ -2,21 +2,48 @@
 database.py — PostgreSQL Schema & Connection for HeavyLift CRM
 """
 import psycopg2, psycopg2.extras
+from psycopg2.pool import ThreadedConnectionPool
 from config import Config
 from security import hash_password
 
+_pool = None
+
+
+def _db_kwargs():
+    return {
+        "host": Config.DB_HOST,
+        "port": Config.DB_PORT,
+        "dbname": Config.DB_NAME,
+        "user": Config.DB_USER,
+        "password": Config.DB_PASS,
+        "connect_timeout": Config.DB_CONNECT_TIMEOUT,
+        "cursor_factory": psycopg2.extras.RealDictCursor,
+    }
+
+
+def _get_pool():
+    global _pool
+    if _pool is None:
+        _pool = ThreadedConnectionPool(
+            minconn=Config.DB_POOL_MIN_CONN,
+            maxconn=Config.DB_POOL_MAX_CONN,
+            **_db_kwargs(),
+        )
+    return _pool
+
+
 def get_db():
-    return psycopg2.connect(
-        host=Config.DB_HOST, port=Config.DB_PORT,
-        dbname=Config.DB_NAME, user=Config.DB_USER,
-        password=Config.DB_PASS,
-        cursor_factory=psycopg2.extras.RealDictCursor
-    )
+    return _get_pool().getconn()
 
 def close_db(conn, commit=True):
     if conn:
-        if commit: conn.commit()
-        conn.close()
+        try:
+            if commit:
+                conn.commit()
+            else:
+                conn.rollback()
+        finally:
+            _get_pool().putconn(conn)
 
 
 def bootstrap_user(username=None, email=None, password=None, role=None):
@@ -47,7 +74,7 @@ def bootstrap_user(username=None, email=None, password=None, role=None):
         return True
     finally:
         cur.close()
-        conn.close()
+        close_db(conn, commit=False)
 
 def init_db():
     conn = get_db(); cur = conn.cursor()
@@ -215,5 +242,6 @@ def init_db():
         except Exception:
             conn.rollback()
 
-    conn.commit(); cur.close(); conn.close()
+    cur.close()
+    close_db(conn)
     print("HeavyLift CRM database ready.")
