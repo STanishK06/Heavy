@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}Users - HeavyLift CRM{% endblock %}
+{% block page_title %}User Management{% endblock %}
+{% block content %}
+<div class="section-card">
+  <div class="toolbar">
+    <span class="result-count">{{ users|length }} user(s)</span>
+    <div class="toolbar-right">
+      <a href="{{ url_for('auth.create_user') }}" class="btn btn-primary btn-sm">
+        <i class="fa-solid fa-user-plus"></i> Create User
+      </a>
+    </div>
+  </div>
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead><tr><th>#</th><th>Username</th><th>Email</th><th>Role</th><th>Location</th><th>Created</th><th>Actions</th></tr></thead>
+      <tbody>
+        {% for u in users %}
+        <tr>
+          <td>{{ loop.index }}</td>
+          <td><strong>{{ u.username }}</strong></td>
+          <td>{{ u.email }}</td>
+          <td><span class="badge badge-{{ u.role }}">{{ u.role|capitalize }}</span></td>
+          <td>{{ u.location_name or '-' }}</td>
+          <td>{{ u.created_at.strftime('%Y-%m-%d') if u.created_at else '-' }}</td>
+          <td>
+            <div class="action-cell">
+              {% if session.role == 'developer' or u.id == session.user_id %}
+              <button class="action-btn btn-edit" title="Change Password" onclick="openPwModal({{ u.id }},'{{ u.username }}')">
+                <i class="fa-solid fa-key"></i>
+              </button>
+              {% endif %}
+              {% if session.role in ['admin', 'developer'] %}
+              <a href="{{ url_for('users.edit', uid=u.id) }}" class="action-btn btn-edit" title="Edit User">
+                <i class="fa-solid fa-user-pen"></i>
+              </a>
+              {% endif %}
+              {% if session.role == 'developer' and u.id != session.user_id %}
+              <form method="POST" action="{{ url_for('users.change_role', uid=u.id) }}" style="display:inline">
+                {{ csrf_input() }}
+                <select name="role" onchange="this.form.submit()" class="inline-select">
+                  <option value="teacher" {% if u.role=='teacher' %}selected{% endif %}>Teacher</option>
+                  <option value="admin" {% if u.role=='admin' %}selected{% endif %}>Admin</option>
+                  <option value="developer" {% if u.role=='developer' %}selected{% endif %}>Developer</option>
+                </select>
+              </form>
+              {% endif %}
+              {% if session.role == 'developer' and u.id != session.user_id %}
+              <form method="POST" action="{{ url_for('users.delete', uid=u.id) }}" style="display:inline" onsubmit="return confirm('Delete user {{ u.username }}?')">
+                {{ csrf_input() }}
+                <button type="submit" class="action-btn btn-delete" title="Delete"><i class="fa-solid fa-trash"></i></button>
+              </form>
+              {% endif %}
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

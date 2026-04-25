@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}{{ action }} Template — HeavyLift CRM{% endblock %}
+{% block page_title %}{{ action }} WhatsApp Template{% endblock %}
+{% block content %}
+<div class="form-card">
+  <div class="tip-box">
+    <i class="fa-solid fa-lightbulb"></i>
+    <span>Placeholders: <code>[NAME]</code> = student name, <code>[MOBILE]</code> = mobile number, <code>[COURSE]</code> = course name, <code>[DATE]</code> = today's date.</span>
+  </div>
+  <form method="POST">
+    {{ csrf_input() }}
+    <div class="form-group">
+      <label>Template Name <span class="req">*</span></label>
+      <div class="input-wrap"><i class="fa-brands fa-whatsapp"></i>
+        <input type="text" name="name" required placeholder="e.g. GREETING MSG" value="{{ msg.name if msg else '' }}"/>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Message Body</label>
+      <textarea name="description" rows="8" class="form-textarea" placeholder="Hi [NAME], thank you for your inquiry about [COURSE]…">{{ msg.description if msg else '' }}</textarea>
+    </div>
+    <div class="form-actions">
+      <button type="submit" class="btn btn-primary"><i class="fa-solid fa-floppy-disk"></i> Save Template</button>
+      <a href="{{ url_for('whatsapp.index') }}" class="btn btn-outline"><i class="fa-solid fa-xmark"></i> Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

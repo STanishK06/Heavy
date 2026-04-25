@@ -1,0 +1,223 @@
+{% extends "base.html" %}
+{% block title %}{{ action }} Inquiry — HeavyLift CRM{% endblock %}
+{% block page_title %}{{ action }} Inquiry{% endblock %}
+{% block content %}
+{% set values = form_data or {} %}
+{% set gender_value = values.get('gender', inquiry.gender if inquiry else '') %}
+{% set location_value = values.get('location_id', inquiry.location_id if inquiry else '') | string %}
+{% set course_value = values.get('course_id', inquiry.course_id if inquiry else '') | string %}
+{% set offer_value = values.get('offer_id', inquiry.offer_id if inquiry else '') | string %}
+{% set status_value = values.get('status', inquiry.status if inquiry else 'Open') %}
+{% set ref2_visible = values.get('ref2_name') or values.get('ref2_mobile') or (inquiry and (inquiry.ref2_name or inquiry.ref2_mobile)) %}
+{% set ref3_visible = values.get('ref3_name') or values.get('ref3_mobile') or (inquiry and (inquiry.ref3_name or inquiry.ref3_mobile)) %}
+<div class="form-card wide">
+  <form method="POST">
+    {{ csrf_input() }}
+
+    <!-- Personal Info -->
+    <div class="form-section">
+      <div class="form-section-title"><i class="fa-solid fa-user"></i> Personal Information</div>
+      <div class="form-row-3">
+        <div class="form-group">
+          <label>Full Name <span class="req">*</span></label>
+          <div class="input-wrap"><i class="fa-solid fa-user"></i>
+            <input type="text" name="name" required placeholder="Student full name" value="{{ values.get('name', inquiry.name if inquiry else '') }}"/>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Gender</label>
+          <div class="input-wrap"><i class="fa-solid fa-venus-mars"></i>
+            <select name="gender">
+              <option value="">— Select —</option>
+              <option value="Male" {% if gender_value == 'Male' %}selected{% endif %}>Male</option>
+              <option value="Female" {% if gender_value == 'Female' %}selected{% endif %}>Female</option>
+              <option value="Other" {% if gender_value == 'Other' %}selected{% endif %}>Other</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Mobile <span class="req">*</span></label>
+          <div class="input-wrap"><i class="fa-solid fa-phone"></i>
+            <input type="text" name="mobile" required placeholder="10-digit mobile" value="{{ values.get('mobile', inquiry.mobile if inquiry else '') }}"/>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>City</label>
+          <div class="input-wrap"><i class="fa-solid fa-city"></i>
+            <input type="text" name="city" placeholder="City" value="{{ values.get('city', inquiry.city if inquiry else '') }}"/>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>State</label>
+          <div class="input-wrap"><i class="fa-solid fa-map"></i>
+            <input type="text" name="state" placeholder="State" value="{{ values.get('state', inquiry.state if inquiry else '') }}"/>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Course & Offer -->
+    <div class="form-section">
+      <div class="form-section-title"><i class="fa-solid fa-book-open"></i> Course & Offer</div>
+      <div class="form-row-3">
+        <div class="form-group">
+          <label>Location</label>
+          <div class="input-wrap"><i class="fa-solid fa-location-dot"></i>
+            <select name="location_id">
+              <option value="">— Select Location —</option>
+              {% for loc in locations %}
+              <option value="{{ loc.id }}" {% if location_value == loc.id|string %}selected{% endif %}>{{ loc.name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Course</label>
+          <div class="input-wrap"><i class="fa-solid fa-book"></i>
+            <select name="course_id" id="course_id">
+              <option value="">— Select Course —</option>
+              {% for c in courses %}
+              <option value="{{ c.id }}" data-fees="{{ c.fees }}" {% if course_value == c.id|string %}selected{% endif %}>{{ c.name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Apply Offer</label>
+          <div class="input-wrap"><i class="fa-solid fa-tag"></i>
+            <select name="offer_id" id="offer_id">
+              <option value="">— No Offer —</option>
+              {% for o in offers %}
+              <option value="{{ o.id }}" {% if offer_value == o.id|string %}selected{% endif %}>
+                {{ o.name }} ({{ '{}%'.format(o.discount_value|int) if o.discount_type=='percent' else '₹{:,.0f}'.format(o.discount_value|float) }} off)
+              </option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Total Fees (₹)</label>
+          <div class="input-wrap"><i class="fa-solid fa-indian-rupee-sign"></i>
+            <input type="number" name="fees_total" id="fees_total" step="1000" min="0" placeholder="Auto-calculated or override"
+                   value="{{ values.get('fees_total', inquiry.fees_total if inquiry else '') }}"/>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Fees Paid (₹)</label>
+          <div class="input-wrap"><i class="fa-solid fa-money-bill-wave"></i>
+            <input type="number" name="fees_paid" step="1000" min="0" placeholder="Amount received"
+                   value="{{ values.get('fees_paid', inquiry.fees_paid if inquiry else '') }}"/>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Status</label>
+          <div class="input-wrap"><i class="fa-solid fa-circle-half-stroke"></i>
+            <select name="status">
+              <option value="Open" {% if status_value == 'Open' %}selected{% endif %}>Open</option>
+              <option value="Converted" {% if status_value == 'Converted' %}selected{% endif %}>Converted</option>
+              <option value="Closed" {% if status_value == 'Closed' %}selected{% endif %}>Closed</option>
+            </select>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Dates -->
+    <div class="form-section">
+      <div class="form-section-title"><i class="fa-regular fa-calendar"></i> Dates</div>
+      <div class="form-row-3">
+        <div class="form-group">
+          <label>Inquiry Date</label>
+          <div class="input-wrap"><i class="fa-regular fa-calendar"></i>
+            <input type="date" name="inquiry_date" id="inquiry_date" value="{{ values.get('inquiry_date', inquiry.inquiry_date if inquiry else defaults.get('inquiry_date','')) }}"/>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Follow-up Date <span style="font-size:.7rem;color:var(--yellow);font-weight:400">(auto +10 days)</span></label>
+          <div class="input-wrap"><i class="fa-regular fa-calendar-check"></i>
+            <input type="date" name="followup_date" id="followup_date" value="{{ values.get('followup_date', inquiry.followup_date if inquiry else defaults.get('followup_date','')) }}"/>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Admission Date</label>
+          <div class="input-wrap"><i class="fa-regular fa-calendar-plus"></i>
+            <input type="date" name="admission_date" value="{{ values.get('admission_date', inquiry.admission_date if inquiry else '') }}"/>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- References (optional) -->
+    <div class="form-section">
+      <div class="form-section-title">
+        <i class="fa-solid fa-people-arrows"></i> Reference Persons
+        <span style="font-size:.75rem;font-weight:400;color:var(--muted);text-transform:none;letter-spacing:0">(optional)</span>
+      </div>
+
+      <!-- Ref 1 always visible -->
+      <div class="form-row-3" id="ref1">
+        <div class="form-group">
+          <label>Ref 1 Name</label>
+          <div class="input-wrap"><i class="fa-solid fa-user-tag"></i>
+            <input type="text" name="ref1_name" placeholder="Reference name" value="{{ values.get('ref1_name', inquiry.ref1_name if inquiry else '') }}"/>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Ref 1 Mobile</label>
+          <div class="input-wrap"><i class="fa-solid fa-phone"></i>
+            <input type="text" name="ref1_mobile" placeholder="Mobile" value="{{ values.get('ref1_mobile', inquiry.ref1_mobile if inquiry else '') }}"/>
+          </div>
+        </div>
+        <div class="form-group" style="display:flex;align-items:flex-end">
+          <button type="button" class="btn btn-outline btn-sm" data-add-ref="ref2" {% if ref2_visible %}style="display:none"{% endif %}>
+            <i class="fa-solid fa-plus"></i> Add Ref 2
+          </button>
+        </div>
+      </div>
+
+      <!-- Ref 2 optional -->
+      <div class="form-row-3" id="ref2" style="{{ 'display:grid' if ref2_visible else 'display:none' }}">
+        <div class="form-group">
+          <label>Ref 2 Name</label>
+          <div class="input-wrap"><i class="fa-solid fa-user-tag"></i>
+            <input type="text" name="ref2_name" placeholder="Reference name" value="{{ values.get('ref2_name', inquiry.ref2_name if inquiry else '') }}"/>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Ref 2 Mobile</label>
+          <div class="input-wrap"><i class="fa-solid fa-phone"></i>
+            <input type="text" name="ref2_mobile" placeholder="Mobile" value="{{ values.get('ref2_mobile', inquiry.ref2_mobile if inquiry else '') }}"/>
+          </div>
+        </div>
+        <div class="form-group" style="display:flex;align-items:flex-end">
+          <button type="button" class="btn btn-outline btn-sm" data-add-ref="ref3" {% if ref3_visible %}style="display:none"{% endif %}>
+            <i class="fa-solid fa-plus"></i> Add Ref 3
+          </button>
+        </div>
+      </div>
+
+      <!-- Ref 3 optional -->
+      <div class="form-row-3" id="ref3" style="{{ 'display:grid' if ref3_visible else 'display:none' }}">
+        <div class="form-group">
+          <label>Ref 3 Name</label>
+          <div class="input-wrap"><i class="fa-solid fa-user-tag"></i>
+            <input type="text" name="ref3_name" placeholder="Reference name" value="{{ values.get('ref3_name', inquiry.ref3_name if inquiry else '') }}"/>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Ref 3 Mobile</label>
+          <div class="input-wrap"><i class="fa-solid fa-phone"></i>
+            <input type="text" name="ref3_mobile" placeholder="Mobile" value="{{ values.get('ref3_mobile', inquiry.ref3_mobile if inquiry else '') }}"/>
+          </div>
+        </div>
+        <div class="form-group"></div>
+      </div>
+    </div>
+
+    <div class="form-actions">
+      <button type="submit" class="btn btn-primary"><i class="fa-solid fa-floppy-disk"></i> Save Inquiry</button>
+      <a href="{{ url_for('inquiries.index') }}" class="btn btn-outline"><i class="fa-solid fa-xmark"></i> Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

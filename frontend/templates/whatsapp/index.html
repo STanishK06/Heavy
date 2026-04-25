@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}WhatsApp Templates — HeavyLift CRM{% endblock %}
+{% block page_title %}WhatsApp Templates{% endblock %}
+{% block content %}
+<div class="section-card">
+  <div class="tip-box">
+    <i class="fa-solid fa-lightbulb"></i>
+    <span>Use <code>[NAME]</code>, <code>[MOBILE]</code>, <code>[COURSE]</code> as placeholders. They are automatically replaced when sending.</span>
+  </div>
+  <div class="toolbar">
+    <form method="GET" class="search-form">
+      <div class="search-wrap">
+        <div class="input-wrap"><i class="fa-solid fa-magnifying-glass"></i>
+          <input type="text" name="q" value="{{ q }}" placeholder="Search templates…"/>
+        </div>
+        <button type="submit" class="btn btn-primary btn-sm">Search</button>
+        {% if q %}<a href="{{ url_for('whatsapp.index') }}" class="btn btn-outline btn-sm">Clear</a>{% endif %}
+      </div>
+    </form>
+    {% if session.role in ['admin','developer'] %}
+    <a href="{{ url_for('whatsapp.add') }}" class="btn btn-primary btn-sm"><i class="fa-solid fa-plus"></i> Add Template</a>
+    {% endif %}
+  </div>
+
+  {% if msgs %}
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead><tr><th>#</th><th>Template Name</th><th>Message Preview</th><th>Created</th>
+        {% if session.role in ['admin','developer'] %}<th>Actions</th>{% endif %}
+      </tr></thead>
+      <tbody>
+        {% for m in msgs %}
+        <tr>
+          <td>{{ loop.index }}</td>
+          <td><strong style="color:var(--yellow-dark)"><i class="fa-brands fa-whatsapp" style="color:#25D366"></i> {{ m.name }}</strong></td>
+          <td class="desc-cell" style="max-width:300px">{{ (m.description or '')[:80] }}{% if m.description and m.description|length > 80 %}…{% endif %}</td>
+          <td>{{ m.created_at.strftime('%Y-%m-%d') if m.created_at else '—' }}</td>
+          {% if session.role in ['admin','developer'] %}
+          <td><div class="action-cell">
+            <a href="{{ url_for('whatsapp.edit', mid=m.id) }}" class="action-btn btn-edit"><i class="fa-solid fa-pen"></i></a>
+            <form method="POST" action="{{ url_for('whatsapp.delete', mid=m.id) }}" style="display:inline" onsubmit="return confirm('Delete?')">
+              {{ csrf_input() }}
+              <button type="submit" class="action-btn btn-delete"><i class="fa-solid fa-trash"></i></button>
+            </form>
+          </div></td>
+          {% endif %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty-state"><i class="fa-brands fa-whatsapp"></i>
+    <p>No templates yet. {% if session.role in ['admin','developer'] %}<a href="{{ url_for('whatsapp.add') }}">Create one →</a>{% endif %}</p>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

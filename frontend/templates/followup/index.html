@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block title %}Follow-ups — HeavyLift CRM{% endblock %}
+{% block page_title %}Follow-up List{% endblock %}
+{% block content %}
+
+<!-- Tab bar -->
+<div class="tab-bar">
+  <a href="?view=today"    class="tab-btn {% if view=='today' %}active{% endif %}">
+    <i class="fa-solid fa-calendar-day"></i> Today
+  </a>
+  <a href="?view=overdue"  class="tab-btn {% if view=='overdue' %}active{% endif %}">
+    <i class="fa-solid fa-triangle-exclamation"></i> Overdue
+  </a>
+  <a href="?view=upcoming" class="tab-btn {% if view=='upcoming' %}active{% endif %}">
+    <i class="fa-solid fa-calendar-week"></i> Upcoming
+  </a>
+  <a href="?view=all"      class="tab-btn {% if view=='all' %}active{% endif %}">
+    <i class="fa-solid fa-list"></i> All Open
+  </a>
+</div>
+
+<div class="section-card">
+  <div class="toolbar">
+    <span class="result-count">{{ inquiries|length }} student(s)</span>
+    <div class="toolbar-right">
+      <a href="{{ url_for('inquiries.add') }}" class="btn btn-primary btn-sm"><i class="fa-solid fa-plus"></i> New Inquiry</a>
+    </div>
+  </div>
+
+  {% if inquiries %}
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead><tr>
+        <th>Name</th><th>Mobile</th><th>Location</th><th>Course</th>
+        <th>Inquiry Date</th><th>Follow-up Date</th><th>Status</th><th>Actions</th>
+      </tr></thead>
+      <tbody>
+        {% for inq in inquiries %}
+        {% set is_overdue = inq.followup_date and inq.followup_date.strftime('%Y-%m-%d') < today %}
+        {% set is_today   = inq.followup_date and inq.followup_date.strftime('%Y-%m-%d') == today %}
+        <tr class="{% if is_overdue %}overdue-row{% elif is_today %}today-row{% endif %}">
+          <td><strong>{{ inq.name }}</strong></td>
+          <td>{{ inq.mobile }}</td>
+          <td>{{ inq.location_name or '—' }}</td>
+          <td>{{ inq.course_name or '—' }}</td>
+          <td>{{ inq.inquiry_date }}</td>
+          <td>
+            {% if inq.followup_date %}
+            <span style="font-weight:600;color:{% if is_overdue %}var(--red){% elif is_today %}var(--yellow-dark){% else %}var(--muted){% endif %}">
+              {% if is_overdue %}<i class="fa-solid fa-exclamation-circle"></i>{% elif is_today %}<i class="fa-solid fa-circle-dot"></i>{% endif %}
+              {{ inq.followup_date }}
+            </span>
+            {% else %}—{% endif %}
+          </td>
+          <td><span class="badge badge-{{ inq.status|lower }}">{{ inq.status }}</span></td>
+          <td>
+            <div class="action-cell">
+              <a href="{{ url_for('inquiries.followup', iid=inq.id) }}" class="action-btn btn-followup" title="Log Follow-up"><i class="fa-solid fa-phone"></i></a>
+              <button class="action-btn btn-whatsapp" title="WhatsApp" onclick="openWaModal({{ inq.id }},'{{ inq.name|replace("'","") }}','{{ inq.mobile }}')"><i class="fa-brands fa-whatsapp"></i></button>
+              <a href="{{ url_for('inquiries.edit', iid=inq.id) }}" class="action-btn btn-edit" title="Edit"><i class="fa-solid fa-pen"></i></a>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty-state">
+    <i class="fa-solid fa-phone-slash"></i>
+    <p>No follow-ups for this view.</p>
+  </div>
+  {% endif %}
+</div>
+
+<!-- Legend -->
+<div style="display:flex;gap:16px;font-size:.8rem;color:var(--muted);margin-top:8px">
+  <span><span style="display:inline-block;width:12px;height:12px;background:#FFF1F0;border:1px solid #FECACA;border-radius:3px;margin-right:4px"></span>Overdue</span>
+  <span><span style="display:inline-block;width:12px;height:12px;background:#FFFDF5;border:1px solid #FDE68A;border-radius:3px;margin-right:4px"></span>Due Today</span>
+</div>
+{% endblock %}

@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% block title %}{{ location.name }} Analytics - HeavyLift CRM{% endblock %}
+{% block page_title %}{{ location.name }} - Analytics{% endblock %}
+{% block head %}<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>{% endblock %}
+
+{% block content %}
+<div class="analytics-hero">
+  <div class="hero-icon"><i class="fa-solid fa-location-dot"></i></div>
+  <div>
+    <h2>{{ location.name }}</h2>
+    <p>{{ location.description or 'Training Center Location' }}</p>
+  </div>
+  <div style="margin-left:auto;display:flex;gap:10px;flex-wrap:wrap">
+    <a href="{{ url_for('locations.edit', loc_id=location.id) }}" class="btn btn-primary btn-sm"><i class="fa-solid fa-pen"></i> Edit</a>
+    <a href="{{ url_for('locations.index') }}" class="btn btn-outline btn-sm"><i class="fa-solid fa-arrow-left"></i> Back</a>
+  </div>
+</div>
+
+<div class="stats-grid">
+  <div class="stat-card stat-yellow">
+    <div class="stat-icon"><i class="fa-solid fa-clipboard-list"></i></div>
+    <div class="stat-body"><div class="stat-num">{{ stats.total or 0 }}</div><div class="stat-label">Total Inquiries</div></div>
+  </div>
+  <div class="stat-card stat-green">
+    <div class="stat-icon"><i class="fa-solid fa-user-graduate"></i></div>
+    <div class="stat-body"><div class="stat-num">{{ stats.enrolled or 0 }}</div><div class="stat-label">Enrolled Students</div></div>
+  </div>
+  <div class="stat-card stat-blue">
+    <div class="stat-icon"><i class="fa-solid fa-indian-rupee-sign"></i></div>
+    <div class="stat-body"><div class="stat-num">&#8377;{{ "{:,.0f}".format(stats.revenue|float) }}</div><div class="stat-label">Revenue Collected</div></div>
+  </div>
+  <div class="stat-card stat-red">
+    <div class="stat-icon"><i class="fa-solid fa-hourglass-half"></i></div>
+    <div class="stat-body"><div class="stat-num">&#8377;{{ "{:,.0f}".format(stats.pending|float) }}</div><div class="stat-label">Pending Fees</div></div>
+  </div>
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:18px">
+  <div class="section-card" style="margin-bottom:0">
+    <h3 class="section-title"><i class="fa-solid fa-chart-line"></i>Monthly Trend</h3>
+    <canvas id="locTrend" height="130"></canvas>
+  </div>
+  <div class="section-card" style="margin-bottom:0">
+    <h3 class="section-title"><i class="fa-solid fa-book-open"></i>Courses at this Location</h3>
+    {% if courses %}
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead><tr><th>Course</th><th>Fees (Rs)</th></tr></thead>
+        <tbody>
+          {% for c in courses %}
+          <tr>
+            <td><a href="{{ url_for('courses.analytics', cid=c.id) }}" style="color:var(--yellow-dark);font-weight:600">{{ c.name }}</a></td>
+            <td>&#8377;{{ "{:,.0f}".format(c.fees|float) }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}<div class="empty-state"><i class="fa-solid fa-book-open"></i><p>No courses at this location.</p></div>{% endif %}
+  </div>
+</div>
+
+<div class="section-card">
+  <h3 class="section-title"><i class="fa-solid fa-clipboard-list"></i>Recent Inquiries</h3>
+  {% if inquiries %}
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead><tr><th>Name</th><th>Mobile</th><th>Course</th><th>Date</th><th>Fees Paid</th><th>Status</th><th>Actions</th></tr></thead>
+      <tbody>
+        {% for inq in inquiries %}
+        <tr class="row-{{ inq.status|lower }}">
+          <td><strong>{{ inq.name }}</strong></td>
+          <td>{{ inq.mobile }}</td>
+          <td>{{ inq.course_name or '-' }}</td>
+          <td>{{ inq.inquiry_date }}</td>
+          <td>&#8377;{{ "{:,.0f}".format(inq.fees_paid|float) }}</td>
+          <td><span class="badge badge-{{ inq.status|lower }}">{{ inq.status }}</span></td>
+          <td>
+            <div class="action-cell">
+              <a href="{{ url_for('inquiries.edit', iid=inq.id) }}" class="action-btn btn-edit" title="Edit"><i class="fa-solid fa-pen"></i></a>
+              <a href="{{ url_for('inquiries.followup', iid=inq.id) }}" class="action-btn btn-followup" title="Follow-up"><i class="fa-solid fa-phone"></i></a>
+              <button class="action-btn btn-whatsapp" onclick="openWaModal({{ inq.id }},'{{ inq.name }}','{{ inq.mobile }}')" title="WhatsApp"><i class="fa-brands fa-whatsapp"></i></button>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}<div class="empty-state"><i class="fa-solid fa-inbox"></i><p>No inquiries found.</p></div>{% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const trend = {{ trend | tojson }};
+const formatChartMonth = (value) => /^\d{4}-\d{2}$/.test(value || '')
+  ? new Date(`${value}-01T00:00:00`).toLocaleDateString('en-IN', {month:'short', year:'2-digit'})
+  : (value || '');
+if(trend && trend.length) {
+  new Chart(document.getElementById('locTrend'), {
+    type:'line',
+    data:{ labels: trend.map(r=>formatChartMonth(r.month)),
+      datasets:[
+        {label:'Inquiries',data:trend.map(r=>r.inquiries),borderColor:'#F59E0B',tension:.35,fill:false,spanGaps:true,pointRadius:3,pointBackgroundColor:'#F59E0B',borderWidth:2.5},
+        {label:'Admissions',data:trend.map(r=>r.admissions),borderColor:'#10B981',tension:.35,fill:false,spanGaps:true,pointRadius:3,pointBackgroundColor:'#10B981',borderWidth:2.5}
+      ]},
+    options:{responsive:true,plugins:{legend:{labels:{font:{family:'Roboto',size:11},boxWidth:12}}},
+      scales:{y:{beginAtZero:true,ticks:{font:{family:'Roboto',size:11}},grid:{color:'#F3F4F6'}},
+              x:{ticks:{font:{family:'Roboto',size:11}},grid:{display:false}}}}
+  });
+}
+</script>
+{% endblock %}

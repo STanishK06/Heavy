@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% block title %}Locations — HeavyLift CRM{% endblock %}
+{% block page_title %}Training Center Locations{% endblock %}
+{% block head %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.2/Sortable.min.js"></script>
+{% endblock %}
+{% block content %}
+<div class="section-card">
+  <div class="toolbar">
+    <form class="search-form" method="GET">
+      <div class="search-wrap">
+        <div class="input-wrap"><i class="fa-solid fa-magnifying-glass"></i>
+          <input type="text" name="q" value="{{ search }}" placeholder="Search locations…"/>
+        </div>
+        <button type="submit" class="btn btn-primary btn-sm">Search</button>
+        {% if search %}<a href="{{ url_for('locations.index') }}" class="btn btn-outline btn-sm">Clear</a>{% endif %}
+      </div>
+    </form>
+    {% if session.role in ['admin','developer'] %}
+    <a href="{{ url_for('locations.add') }}" class="btn btn-primary btn-sm"><i class="fa-solid fa-plus"></i> Add Location</a>
+    {% endif %}
+  </div>
+
+  <div class="tip-box" style="margin-bottom:14px">
+    <i class="fa-solid fa-grip-dots"></i>
+    <span>Drag rows to reorder. Click a location name to view full analytics.</span>
+  </div>
+
+  {% if locations %}
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead><tr>
+        {% if session.role in ['admin','developer'] %}<th style="width:30px"></th>{% endif %}
+        <th>#</th><th>Location Name</th><th>Description</th><th>Created</th>
+        {% if session.role in ['admin','developer'] %}<th>Actions</th>{% endif %}
+      </tr></thead>
+      <tbody id="locTable">
+        {% for loc in locations %}
+        <tr data-id="{{ loc.id }}" class="clickable-row" data-href="{{ url_for('locations.analytics', loc_id=loc.id) }}">
+          {% if session.role in ['admin','developer'] %}
+          <td onclick="event.stopPropagation()"><span class="drag-handle"><i class="fa-solid fa-grip-vertical"></i></span></td>
+          {% endif %}
+          <td data-index-cell>{{ loop.index }}</td>
+          <td><strong style="color:var(--yellow-dark)">{{ loc.name }}</strong></td>
+          <td class="desc-cell">{{ loc.description or '—' }}</td>
+          <td>{{ loc.created_at.strftime('%Y-%m-%d') if loc.created_at else '—' }}</td>
+          {% if session.role in ['admin','developer'] %}
+          <td onclick="event.stopPropagation()">
+            <div class="action-cell">
+              <a href="{{ url_for('locations.analytics', loc_id=loc.id) }}" class="action-btn btn-analytics" title="Analytics"><i class="fa-solid fa-chart-bar"></i></a>
+              <a href="{{ url_for('locations.edit', loc_id=loc.id) }}" class="action-btn btn-edit" title="Edit"><i class="fa-solid fa-pen"></i></a>
+              <form method="POST" action="{{ url_for('locations.delete', loc_id=loc.id) }}" style="display:inline" onsubmit="return confirm('Delete?')">
+                {{ csrf_input() }}
+                <button type="submit" class="action-btn btn-delete" title="Delete"><i class="fa-solid fa-trash"></i></button>
+              </form>
+            </div>
+          </td>
+          {% endif %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty-state"><i class="fa-solid fa-location-dot"></i>
+    <p>No locations found. {% if session.role in ['admin','developer'] %}<a href="{{ url_for('locations.add') }}">Add one →</a>{% endif %}</p>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+const tbody = document.getElementById('locTable');
+if(tbody) {
+  const renumberRows = () => {
+    [...tbody.querySelectorAll('[data-index-cell]')].forEach((cell, index) => {
+      cell.textContent = index + 1;
+    });
+  };
+  Sortable.create(tbody, {
+    animation: 150, ghostClass: 'sortable-ghost',
+    filter: 'a, button, form, input, select, textarea, .action-cell, .action-cell *',
+    preventOnFilter: false,
+    onStart: () => {
+      tbody.dataset.lastDragAt = String(Date.now());
+    },
+    onEnd: async () => {
+      tbody.dataset.lastDragAt = String(Date.now());
+      renumberRows();
+      const ids = [...tbody.querySelectorAll('tr')].map(r=>parseInt(r.dataset.id));
+      await fetch('/locations/reorder', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ids}) });
+    }
+  });
+}
+</script>
+{% endblock %}

@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}Offers — HeavyLift CRM{% endblock %}
+{% block page_title %}Offers & Discounts{% endblock %}
+{% block content %}
+<div class="section-card">
+  <div class="toolbar">
+    <form method="GET" class="search-form">
+      <div class="search-wrap">
+        <div class="input-wrap"><i class="fa-solid fa-magnifying-glass"></i>
+          <input type="text" name="q" value="{{ search }}" placeholder="Search offers…"/>
+        </div>
+        <button type="submit" class="btn btn-primary btn-sm">Search</button>
+        {% if search %}<a href="{{ url_for('offers.index') }}" class="btn btn-outline btn-sm">Clear</a>{% endif %}
+      </div>
+    </form>
+    {% if session.role in ['admin','developer'] %}
+    <a href="{{ url_for('offers.add') }}" class="btn btn-primary btn-sm"><i class="fa-solid fa-plus"></i> Add Offer</a>
+    {% endif %}
+  </div>
+
+  {% if offers %}
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead><tr><th>#</th><th>Offer Name</th><th>Discount</th><th>Location</th><th>Valid Period</th><th>Status</th>
+        {% if session.role in ['admin','developer'] %}<th>Actions</th>{% endif %}
+      </tr></thead>
+      <tbody>
+        {% for o in offers %}
+        <tr>
+          <td>{{ loop.index }}</td>
+          <td><strong>{{ o.name }}</strong><br><span style="font-size:.75rem;color:var(--muted)">{{ o.description or '' }}</span></td>
+          <td>
+            <span class="badge {% if o.discount_type=='percent' %}offer-badge-percent{% else %}offer-badge-flat{% endif %}">
+              {% if o.discount_type=='percent' %}{{ o.discount_value|int }}% off{% else %}₹{{ "{:,.0f}".format(o.discount_value|float) }} off{% endif %}
+            </span>
+          </td>
+          <td>{{ o.location_name or 'All' }}</td>
+          <td style="font-size:.82rem">
+            {{ o.valid_from or '—' }} → {{ o.valid_to or '∞' }}
+          </td>
+          <td><span class="badge {% if o.is_active %}badge-active{% else %}badge-inactive{% endif %}">{{ 'Active' if o.is_active else 'Inactive' }}</span></td>
+          {% if session.role in ['admin','developer'] %}
+          <td><div class="action-cell">
+            <a href="{{ url_for('offers.edit', oid=o.id) }}" class="action-btn btn-edit"><i class="fa-solid fa-pen"></i></a>
+            <form method="POST" action="{{ url_for('offers.delete', oid=o.id) }}" style="display:inline" onsubmit="return confirm('Delete?')">
+              {{ csrf_input() }}
+              <button type="submit" class="action-btn btn-delete"><i class="fa-solid fa-trash"></i></button>
+            </form>
+          </div></td>
+          {% endif %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty-state"><i class="fa-solid fa-tag"></i>
+    <p>No offers yet. {% if session.role in ['admin','developer'] %}<a href="{{ url_for('offers.add') }}">Create one →</a>{% endif %}</p>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

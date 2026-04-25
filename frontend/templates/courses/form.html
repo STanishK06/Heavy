@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}{{ action }} Course — HeavyLift CRM{% endblock %}
+{% block page_title %}{{ action }} Course{% endblock %}
+{% block content %}
+{% set values = form_data or {} %}
+{% set location_value = values.get('location_id', course.location_id if course else '') | string %}
+<div class="form-card">
+  <form method="POST">
+    {{ csrf_input() }}
+    <div class="form-row-2">
+      <div class="form-group">
+        <label>Course Name <span class="req">*</span></label>
+        <div class="input-wrap"><i class="fa-solid fa-book-open"></i>
+          <input type="text" name="name" required placeholder="e.g. COMBO1" value="{{ values.get('name', course.name if course else '') }}"/>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Location</label>
+        <div class="input-wrap"><i class="fa-solid fa-location-dot"></i>
+          <select name="location_id">
+            <option value="">— Select Location —</option>
+            {% for loc in locations %}
+            <option value="{{ loc.id }}" {% if location_value == loc.id|string %}selected{% endif %}>{{ loc.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Course Fees (₹)</label>
+        <div class="input-wrap"><i class="fa-solid fa-indian-rupee-sign"></i>
+          <input type="number" name="fees" step="1000" min="0" placeholder="e.g. 15000"
+                 value="{{ values.get('fees', course.fees if course else '') }}"/>
+        </div>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Description</label>
+      <textarea name="description" rows="4" class="form-textarea" placeholder="Optional description…">{{ values.get('description', course.description if course else '') }}</textarea>
+    </div>
+    <div class="form-actions">
+      <button type="submit" class="btn btn-primary"><i class="fa-solid fa-floppy-disk"></i> Save</button>
+      <a href="{{ url_for('courses.index') }}" class="btn btn-outline"><i class="fa-solid fa-xmark"></i> Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

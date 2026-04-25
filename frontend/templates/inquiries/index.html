@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+{% block title %}Inquiries — HeavyLift CRM{% endblock %}
+{% block page_title %}Inquiries{% endblock %}
+{% block content %}
+<div class="section-card">
+  <!-- Filter Panel -->
+  <div class="filter-panel">
+    <div class="filter-toggle" onclick="this.nextElementSibling.classList.toggle('open');this.querySelector('.filter-chevron').style.transform=this.nextElementSibling.classList.contains('open')?'rotate(180deg)':''">
+      <span><i class="fa-solid fa-filter" style="color:var(--yellow);margin-right:6px"></i> Filter & Search</span>
+      <i class="fa-solid fa-chevron-down filter-chevron" style="transition:transform .2s;color:var(--muted)"></i>
+    </div>
+    <div class="filter-body {% if filters.name or filters.mobile or filters.location or filters.course or filters.status or filters.date_from or filters.date_to or filters.last_days %}open{% endif %}">
+      <form method="GET">
+        <div class="filter-grid">
+          <div class="form-group"><label>Name</label><input type="text" name="name" value="{{ filters.name }}" placeholder="Search name…"/></div>
+          <div class="form-group"><label>Mobile</label><input type="text" name="mobile" value="{{ filters.mobile }}" placeholder="Mobile…"/></div>
+          <div class="form-group"><label>Location</label><input type="text" name="location" value="{{ filters.location }}" placeholder="Location…"/></div>
+          <div class="form-group"><label>Course</label><input type="text" name="course" value="{{ filters.course }}" placeholder="Course…"/></div>
+          <div class="form-group">
+            <label>Status</label>
+            <select name="status">
+              <option value="">All</option>
+              <option value="Open" {% if filters.status=='Open' %}selected{% endif %}>Open</option>
+              <option value="Converted" {% if filters.status=='Converted' %}selected{% endif %}>Converted</option>
+              <option value="Closed" {% if filters.status=='Closed' %}selected{% endif %}>Closed</option>
+            </select>
+          </div>
+          <div class="form-group"><label>Last X Days</label><input type="number" name="last_days" value="{{ filters.last_days }}" placeholder="e.g. 30" min="1"/></div>
+          <div class="form-group"><label>Date From</label><input type="date" name="date_from" value="{{ filters.date_from }}"/></div>
+          <div class="form-group"><label>Date To</label><input type="date" name="date_to" value="{{ filters.date_to }}"/></div>
+        </div>
+        <div class="filter-actions">
+          <button type="submit" class="btn btn-primary btn-sm"><i class="fa-solid fa-magnifying-glass"></i> Search</button>
+          <a href="{{ url_for('inquiries.index') }}" class="btn btn-outline btn-sm">Clear</a>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="toolbar">
+    <span class="result-count">{{ inquiries|length }} record(s)</span>
+    <div class="toolbar-right">
+      {% if session.role in ['admin','developer','teacher'] %}
+      <a href="{{ url_for('inquiries.add') }}" class="btn btn-primary btn-sm"><i class="fa-solid fa-plus"></i> Add Inquiry</a>
+      <a href="{{ url_for('inquiries.export') }}" class="btn btn-green btn-sm"><i class="fa-solid fa-file-excel"></i> Export</a>
+      {% endif %}
+    </div>
+  </div>
+
+  {% if inquiries %}
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead><tr>
+        <th class="sortable" data-col="i.name">Name <i class="fa-solid fa-sort" style="opacity:.4"></i></th>
+        <th>Mobile</th>
+        <th class="sortable" data-col="l.name">Location <i class="fa-solid fa-sort" style="opacity:.4"></i></th>
+        <th class="sortable" data-col="c.name">Course <i class="fa-solid fa-sort" style="opacity:.4"></i></th>
+        <th class="sortable" data-col="i.inquiry_date">Inquiry Date <i class="fa-solid fa-sort" style="opacity:.4"></i></th>
+        <th class="sortable" data-col="i.followup_date">Follow-up <i class="fa-solid fa-sort" style="opacity:.4"></i></th>
+        <th>Fees Paid</th>
+        <th class="sortable" data-col="i.status">Status <i class="fa-solid fa-sort" style="opacity:.4"></i></th>
+        <th>Actions</th>
+      </tr></thead>
+      <tbody>
+        {% for inq in inquiries %}
+        <tr class="row-{{ inq.status|lower }}">
+          <td><strong>{{ inq.name }}</strong></td>
+          <td>{{ inq.mobile }}</td>
+          <td>{{ inq.location_name or '—' }}</td>
+          <td>{{ inq.course_name or '—' }}</td>
+          <td>{{ inq.inquiry_date }}</td>
+          <td>{% if inq.followup_date %}<span style="color:{% if inq.followup_date < today %}var(--red){% else %}var(--muted){% endif %}">{{ inq.followup_date }}</span>{% else %}—{% endif %}</td>
+          <td>₹{{ "{:,.0f}".format(inq.fees_paid|float) }}</td>
+          <td><span class="badge badge-{{ inq.status|lower }}">{{ inq.status }}</span></td>
+          <td>
+            <div class="action-cell">
+              <a href="{{ url_for('inquiries.edit', iid=inq.id) }}" class="action-btn btn-edit" title="Edit"><i class="fa-solid fa-pen"></i></a>
+              <a href="{{ url_for('inquiries.followup', iid=inq.id) }}" class="action-btn btn-followup" title="Follow-up"><i class="fa-solid fa-phone"></i></a>
+              <button class="action-btn btn-whatsapp" title="WhatsApp" onclick="openWaModal({{ inq.id }},'{{ inq.name|replace("'","") }}','{{ inq.mobile }}')"><i class="fa-brands fa-whatsapp"></i></button>
+              {% if inq.status != 'Converted' %}
+              <form method="POST" action="{{ url_for('inquiries.convert', iid=inq.id) }}" style="display:inline" onsubmit="return confirm('Convert {{ inq.name }} to student?')">
+                {{ csrf_input() }}
+                <button type="submit" class="action-btn btn-convert" title="Convert"><i class="fa-solid fa-user-graduate"></i></button>
+              </form>
+              {% endif %}
+              {% if session.role in ['admin','developer'] %}
+              <form method="POST" action="{{ url_for('inquiries.delete', iid=inq.id) }}" style="display:inline" onsubmit="return confirm('Delete permanently?')">
+                {{ csrf_input() }}
+                <button type="submit" class="action-btn btn-delete" title="Delete"><i class="fa-solid fa-trash"></i></button>
+              </form>
+              {% endif %}
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty-state"><i class="fa-solid fa-clipboard-list"></i>
+    <p>No inquiries found. {% if session.role in ['admin','developer','teacher'] %}<a href="{{ url_for('inquiries.add') }}">Add one →</a>{% endif %}</p>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+document.querySelectorAll('th.sortable').forEach(th=>{
+  th.addEventListener('click',()=>{
+    const u=new URL(window.location.href);
+    const cur=u.searchParams.get('sort'),dir=u.searchParams.get('dir');
+    u.searchParams.set('sort',th.dataset.col);
+    u.searchParams.set('dir',cur===th.dataset.col&&dir==='asc'?'desc':'asc');
+    window.location=u.toString();
+  });
+});
+</script>
+{% endblock %}

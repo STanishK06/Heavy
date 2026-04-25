@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% block title %}Courses — HeavyLift CRM{% endblock %}
+{% block page_title %}Courses{% endblock %}
+{% block head %}<script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.2/Sortable.min.js"></script>{% endblock %}
+{% block content %}
+<div class="section-card">
+  <div class="toolbar">
+    <form method="GET" class="search-form">
+      <div class="search-wrap">
+        <div class="input-wrap"><i class="fa-solid fa-magnifying-glass"></i>
+          <input type="text" name="name" value="{{ name_q }}" placeholder="Course name…"/>
+        </div>
+        <div class="input-wrap"><i class="fa-solid fa-location-dot"></i>
+          <input type="text" name="location" value="{{ loc_q }}" placeholder="Location…"/>
+        </div>
+        <button type="submit" class="btn btn-primary btn-sm">Search</button>
+        {% if name_q or loc_q %}<a href="{{ url_for('courses.index') }}" class="btn btn-outline btn-sm">Clear</a>{% endif %}
+      </div>
+    </form>
+    {% if session.role in ['admin','developer'] %}
+    <a href="{{ url_for('courses.add') }}" class="btn btn-primary btn-sm"><i class="fa-solid fa-plus"></i> Add Course</a>
+    {% endif %}
+  </div>
+
+  <div class="tip-box" style="margin-bottom:14px">
+    <i class="fa-solid fa-grip-dots"></i>
+    <span>Drag rows to reorder. Click a course name to view course analytics.</span>
+  </div>
+
+  {% if courses %}
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead><tr>
+        {% if session.role in ['admin','developer'] %}<th style="width:30px"></th>{% endif %}
+        <th>#</th><th>Course Name</th><th>Location</th><th>Fees (₹)</th><th>Created</th>
+        {% if session.role in ['admin','developer'] %}<th>Actions</th>{% endif %}
+      </tr></thead>
+      <tbody id="courseTable">
+        {% for c in courses %}
+        <tr data-id="{{ c.id }}" class="clickable-row" data-href="{{ url_for('courses.analytics', cid=c.id) }}">
+          {% if session.role in ['admin','developer'] %}
+          <td onclick="event.stopPropagation()"><span class="drag-handle"><i class="fa-solid fa-grip-vertical"></i></span></td>
+          {% endif %}
+          <td data-index-cell>{{ loop.index }}</td>
+          <td><strong style="color:var(--yellow-dark)">{{ c.name }}</strong></td>
+          <td>{{ c.location_name or '—' }}</td>
+          <td>₹{{ "{:,.0f}".format(c.fees|float) }}</td>
+          <td>{{ c.created_at.strftime('%Y-%m-%d') if c.created_at else '—' }}</td>
+          {% if session.role in ['admin','developer'] %}
+          <td onclick="event.stopPropagation()">
+            <div class="action-cell">
+              <a href="{{ url_for('courses.analytics', cid=c.id) }}" class="action-btn btn-analytics" title="Analytics"><i class="fa-solid fa-chart-bar"></i></a>
+              <a href="{{ url_for('courses.edit', cid=c.id) }}" class="action-btn btn-edit" title="Edit"><i class="fa-solid fa-pen"></i></a>
+              <form method="POST" action="{{ url_for('courses.delete', cid=c.id) }}" style="display:inline" onsubmit="return confirm('Delete?')">
+                {{ csrf_input() }}
+                <button type="submit" class="action-btn btn-delete"><i class="fa-solid fa-trash"></i></button>
+              </form>
+            </div>
+          </td>
+          {% endif %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty-state"><i class="fa-solid fa-book-open"></i>
+    <p>No courses yet. {% if session.role in ['admin','developer'] %}<a href="{{ url_for('courses.add') }}">Add one →</a>{% endif %}</p>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+const ct = document.getElementById('courseTable');
+if(ct) {
+  const renumberRows = () => {
+    [...ct.querySelectorAll('[data-index-cell]')].forEach((cell, index) => {
+      cell.textContent = index + 1;
+    });
+  };
+  Sortable.create(ct,{animation:150,ghostClass:'sortable-ghost',
+    filter:'a, button, form, input, select, textarea, .action-cell, .action-cell *',
+    preventOnFilter:false,
+    onStart:()=>{
+      ct.dataset.lastDragAt=String(Date.now());
+    },
+    onEnd:async()=>{
+      ct.dataset.lastDragAt=String(Date.now());
+      renumberRows();
+      const ids=[...ct.querySelectorAll('tr')].map(r=>parseInt(r.dataset.id));
+      await fetch('/courses/reorder',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ids})});
+    }
+  });
+}
+</script>
+{% endblock %}

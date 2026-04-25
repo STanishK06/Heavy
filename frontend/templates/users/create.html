@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}Create User — HeavyLift CRM{% endblock %}
+{% block page_title %}Create User Account{% endblock %}
+{% block content %}
+<div class="form-card">
+  <div class="tip-box">
+    <i class="fa-solid fa-shield-halved"></i>
+    <span>Only <strong>admins and developers</strong> who are logged in can create accounts. No student accounts exist in this system.</span>
+  </div>
+  <form method="POST" action="{{ url_for('auth.create_user') }}">
+    {{ csrf_input() }}
+    <div class="form-section">
+      <div class="form-section-title"><i class="fa-solid fa-user"></i> Account Details</div>
+      <div class="form-row-2">
+        <div class="form-group">
+          <label>Username <span class="req">*</span></label>
+          <div class="input-wrap"><i class="fa-solid fa-user"></i>
+            <input type="text" name="username" required placeholder="e.g. john_admin"/>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Email <span class="req">*</span></label>
+          <div class="input-wrap"><i class="fa-solid fa-envelope"></i>
+            <input type="email" name="email" required placeholder="john@heavylift.com"/>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Password <span class="req">*</span></label>
+          <div class="input-wrap"><i class="fa-solid fa-lock"></i>
+            <input type="password" name="password" required placeholder="Min 6 characters"/>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Confirm Password <span class="req">*</span></label>
+          <div class="input-wrap"><i class="fa-solid fa-lock"></i>
+            <input type="password" name="confirm_password" required placeholder="Repeat password"/>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Role <span class="req">*</span></label>
+          <div class="input-wrap"><i class="fa-solid fa-id-badge"></i>
+            <select name="role" id="roleSelect">
+              <option value="teacher">Teacher</option>
+              <option value="admin">Admin</option>
+              {% if session.role == 'developer' %}
+              <option value="developer">Developer</option>
+              {% endif %}
+            </select>
+          </div>
+        </div>
+        <div class="form-group" id="locGroup">
+          <label>Assigned Location</label>
+          <div class="input-wrap"><i class="fa-solid fa-location-dot"></i>
+            <select name="location_id">
+              <option value="">— All Locations —</option>
+              {% for loc in locations %}
+              <option value="{{ loc.id }}">{{ loc.name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="form-actions">
+      <button type="submit" class="btn btn-primary"><i class="fa-solid fa-user-check"></i> Create Account</button>
+      <a href="{{ url_for('users.index') }}" class="btn btn-outline"><i class="fa-solid fa-xmark"></i> Cancel</a>
+    </div>
+  </form>
+</div>
+<script>
+  document.getElementById('roleSelect').addEventListener('change',function(){
+    document.getElementById('locGroup').style.opacity = this.value==='teacher'?'1':'0.4';
+  });
+</script>
+{% endblock %}

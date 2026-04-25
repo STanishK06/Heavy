@@ -1,0 +1,154 @@
+{% extends "base.html" %}
+{% block title %}Dashboard - HeavyLift CRM{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
+{% block head %}<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>{% endblock %}
+
+{% block content %}
+<div class="stats-grid">
+  <div class="stat-card stat-yellow">
+    <div class="stat-icon"><i class="fa-solid fa-clipboard-list"></i></div>
+    <div class="stat-body">
+      <div class="stat-num">{{ total }}</div>
+      <div class="stat-label">Total Inquiries</div>
+      <div class="stat-sub">All time</div>
+    </div>
+  </div>
+  <div class="stat-card stat-blue">
+    <div class="stat-icon"><i class="fa-solid fa-hourglass-half"></i></div>
+    <div class="stat-body">
+      <div class="stat-num">{{ open_c }}</div>
+      <div class="stat-label">Pending Inquiries</div>
+      <div class="stat-sub">Awaiting follow-up</div>
+    </div>
+  </div>
+  <div class="stat-card stat-green">
+    <div class="stat-icon"><i class="fa-solid fa-indian-rupee-sign"></i></div>
+    <div class="stat-body">
+      <div class="stat-num">&#8377;{{ "{:,.0f}".format(revenue|float) }}</div>
+      <div class="stat-label">Revenue Collected</div>
+      <div class="stat-sub">From admissions</div>
+    </div>
+  </div>
+  <div class="stat-card stat-red">
+    <div class="stat-icon"><i class="fa-solid fa-clock-rotate-left"></i></div>
+    <div class="stat-body">
+      <div class="stat-num">&#8377;{{ "{:,.0f}".format(pending|float) }}</div>
+      <div class="stat-label">Pending Fees</div>
+      <div class="stat-sub">Outstanding</div>
+    </div>
+  </div>
+</div>
+
+<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:18px">
+  <div class="section-card" style="padding:16px 20px;display:flex;align-items:center;gap:14px;margin-bottom:0">
+    <div style="width:42px;height:42px;background:#ECFDF5;border-radius:10px;display:flex;align-items:center;justify-content:center;color:#10B981;font-size:1.1rem"><i class="fa-solid fa-user-graduate"></i></div>
+    <div><div style="font-size:1.4rem;font-weight:800">{{ converted }}</div><div style="font-size:.78rem;color:var(--muted)">Converted Students</div></div>
+  </div>
+  <div class="section-card" style="padding:16px 20px;display:flex;align-items:center;gap:14px;margin-bottom:0">
+    <div style="width:42px;height:42px;background:#FEF3C7;border-radius:10px;display:flex;align-items:center;justify-content:center;color:var(--yellow);font-size:1.1rem"><i class="fa-solid fa-phone-volume"></i></div>
+    <div><div style="font-size:1.4rem;font-weight:800">{{ todays_fu }}</div><div style="font-size:.78rem;color:var(--muted)">Today's Follow-ups</div></div>
+  </div>
+  <div class="section-card" style="padding:16px 20px;display:flex;align-items:center;gap:14px;margin-bottom:0">
+    <div style="width:42px;height:42px;background:#FEE2E2;border-radius:10px;display:flex;align-items:center;justify-content:center;color:#EF4444;font-size:1.1rem"><i class="fa-solid fa-circle-xmark"></i></div>
+    <div><div style="font-size:1.4rem;font-weight:800">{{ closed }}</div><div style="font-size:.78rem;color:var(--muted)">Closed</div></div>
+  </div>
+</div>
+
+<div style="display:grid;grid-template-columns:2fr 1fr;gap:18px;margin-bottom:18px">
+  <div class="section-card" style="margin-bottom:0">
+    <div class="section-header">
+      <h3 class="section-title" style="margin-bottom:0"><i class="fa-solid fa-chart-line"></i>Inquiries vs Admissions (Last 6 Months)</h3>
+    </div>
+    <canvas id="dashTrend" height="96"></canvas>
+  </div>
+  <div class="section-card" style="margin-bottom:0">
+    <h3 class="section-title"><i class="fa-solid fa-bolt"></i>Quick Actions</h3>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      {% if session.role in ['admin','developer','teacher'] %}
+      <a href="{{ url_for('inquiries.add') }}" class="btn btn-primary" style="justify-content:flex-start">
+        <i class="fa-solid fa-plus"></i> Add Inquiry
+      </a>
+      {% endif %}
+      {% if session.role in ['admin','developer'] %}
+      <a href="{{ url_for('locations.add') }}" class="btn btn-dark" style="justify-content:flex-start">
+        <i class="fa-solid fa-location-plus"></i> Add Location
+      </a>
+      <a href="{{ url_for('courses.add') }}" class="btn btn-outline" style="justify-content:flex-start">
+        <i class="fa-solid fa-book-medical"></i> Add Course
+      </a>
+      <a href="{{ url_for('offers.add') }}" class="btn btn-outline" style="justify-content:flex-start">
+        <i class="fa-solid fa-tag"></i> Add Offer
+      </a>
+      {% endif %}
+      <a href="{{ url_for('inquiries.export') }}" class="btn btn-green" style="justify-content:flex-start">
+        <i class="fa-solid fa-file-excel"></i> Export Excel
+      </a>
+      <a href="{{ url_for('reports.index') }}" class="btn btn-outline" style="justify-content:flex-start">
+        <i class="fa-solid fa-chart-bar"></i> Full Reports
+      </a>
+    </div>
+  </div>
+</div>
+
+<div class="section-card">
+  <div class="section-header">
+    <h3 class="section-title" style="margin-bottom:0"><i class="fa-solid fa-clock-rotate-left"></i>Recent Inquiries</h3>
+    <a href="{{ url_for('inquiries.index') }}" class="view-all-link">View all <i class="fa-solid fa-arrow-right"></i></a>
+  </div>
+  {% if recent %}
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead><tr><th>Name</th><th>Mobile</th><th>Location</th><th>Course</th><th>Date</th><th>Status</th><th>Actions</th></tr></thead>
+      <tbody>
+        {% for inq in recent %}
+        <tr class="row-{{ inq.status|lower }}">
+          <td><strong>{{ inq.name }}</strong></td>
+          <td>{{ inq.mobile }}</td>
+          <td>{{ inq.location_name or '-' }}</td>
+          <td>{{ inq.course_name or '-' }}</td>
+          <td>{{ inq.inquiry_date }}</td>
+          <td><span class="badge badge-{{ inq.status|lower }}">{{ inq.status }}</span></td>
+          <td>
+            <div class="action-cell">
+              <a href="{{ url_for('inquiries.edit', iid=inq.id) }}" class="action-btn btn-edit" title="Edit"><i class="fa-solid fa-pen"></i></a>
+              <a href="{{ url_for('inquiries.followup', iid=inq.id) }}" class="action-btn btn-followup" title="Follow-up"><i class="fa-solid fa-phone"></i></a>
+              <button class="action-btn btn-whatsapp" title="WhatsApp" onclick="openWaModal({{ inq.id }},'{{ inq.name }}','{{ inq.mobile }}')"><i class="fa-brands fa-whatsapp"></i></button>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty-state"><i class="fa-solid fa-inbox"></i><p>No inquiries yet. <a href="{{ url_for('inquiries.add') }}">Add one -></a></p></div>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const trend = {{ trend | tojson }};
+const formatChartMonth = (value) => value || '';
+if (trend && trend.length) {
+  new Chart(document.getElementById('dashTrend'), {
+    type: 'line',
+    data: {
+      labels: trend.map(r => formatChartMonth(r.month_label || r.month)),
+      datasets: [
+        { label: 'Inquiries', data: trend.map(r => r.inquiries),
+          borderColor: '#F59E0B', tension: .35, fill: false, spanGaps: true,
+          pointBackgroundColor: '#F59E0B', pointRadius: 3, borderWidth: 2.5 },
+        { label: 'Admissions', data: trend.map(r => r.admissions),
+          borderColor: '#10B981', tension: .35, fill: false, spanGaps: true,
+          pointBackgroundColor: '#10B981', pointRadius: 3, borderWidth: 2.5 }
+      ]
+    },
+    options: { responsive: true, interaction: { mode: 'index', intersect: false },
+      plugins: { legend: { position: 'top', labels: { font: { family: 'Roboto', size: 11 }, boxWidth: 12 } } },
+      scales: { y: { beginAtZero: true, ticks: { stepSize: 1, font: { family: 'Roboto', size: 11 } }, grid: { color: '#F3F4F6' } },
+                x: { ticks: { font: { family: 'Roboto', size: 11 } }, grid: { display: false } } } }
+  });
+}
+</script>
+{% endblock %}

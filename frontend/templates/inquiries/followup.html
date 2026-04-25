@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block title %}Follow-up — {{ inquiry.name }}{% endblock %}
+{% block page_title %}Follow-up: {{ inquiry.name }}{% endblock %}
+{% block content %}
+<div class="two-col-layout">
+  <div>
+    <!-- Info Card -->
+    <div class="section-card" style="background:#FFFBEB;border:1px solid #FDE68A">
+      <h4 class="section-title"><i class="fa-solid fa-circle-user"></i> Inquiry Details</h4>
+      <div class="info-grid">
+        <div class="info-item"><span class="info-label">Name</span><span class="info-val">{{ inquiry.name }}</span></div>
+        <div class="info-item"><span class="info-label">Mobile</span>
+          <span class="info-val">{{ inquiry.mobile }}
+            <button class="btn btn-xs" style="background:#25D366;color:#fff;margin-left:6px" onclick="openWaModal({{ inquiry.id }},'{{ inquiry.name }}','{{ inquiry.mobile }}')">
+              <i class="fa-brands fa-whatsapp"></i>
+            </button>
+          </span>
+        </div>
+        <div class="info-item"><span class="info-label">Location</span><span class="info-val">{{ inquiry.location_name or '—' }}</span></div>
+        <div class="info-item"><span class="info-label">Course</span><span class="info-val">{{ inquiry.course_name or '—' }}</span></div>
+        <div class="info-item"><span class="info-label">Status</span><span class="badge badge-{{ inquiry.status|lower }}">{{ inquiry.status }}</span></div>
+        <div class="info-item"><span class="info-label">Inquiry Date</span><span class="info-val">{{ inquiry.inquiry_date }}</span></div>
+        <div class="info-item"><span class="info-label">Fees Total</span><span class="info-val">₹{{ "{:,.0f}".format(inquiry.fees_total|float) }}</span></div>
+        <div class="info-item"><span class="info-label">Fees Paid</span><span class="info-val">₹{{ "{:,.0f}".format(inquiry.fees_paid|float) }}</span></div>
+      </div>
+    </div>
+
+    <!-- Follow-up Form -->
+    <div class="section-card">
+      <h4 class="section-title"><i class="fa-solid fa-phone-volume"></i> Log Follow-up</h4>
+      <form method="POST">
+        {{ csrf_input() }}
+        <div class="form-group">
+          <label>Conversation Notes <span class="req">*</span></label>
+          <textarea name="conversation" rows="4" class="form-textarea" required placeholder="What was discussed…"></textarea>
+        </div>
+        <div class="form-row-2">
+          <div class="form-group">
+            <label>Next Follow-up Date</label>
+            <div class="input-wrap"><i class="fa-regular fa-calendar"></i>
+              <input type="date" name="followup_date" value="{{ default_next }}"/>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Admission Date</label>
+            <div class="input-wrap"><i class="fa-regular fa-calendar-plus"></i>
+              <input type="date" name="admission_date" value="{{ inquiry.admission_date or '' }}"/>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Update Status</label>
+            <div class="input-wrap"><i class="fa-solid fa-circle-half-stroke"></i>
+              <select name="status">
+                <option value="Open" {% if inquiry.status=='Open' %}selected{% endif %}>Open</option>
+                <option value="Converted" {% if inquiry.status=='Converted' %}selected{% endif %}>Converted</option>
+                <option value="Closed" {% if inquiry.status=='Closed' %}selected{% endif %}>Closed</option>
+              </select>
+            </div>
+          </div>
+        </div>
+        <div class="form-actions">
+          <button type="submit" class="btn btn-primary"><i class="fa-solid fa-floppy-disk"></i> Save Follow-up</button>
+          <a href="{{ url_for('inquiries.index') }}" class="btn btn-outline"><i class="fa-solid fa-arrow-left"></i> Back</a>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Timeline -->
+  <div class="section-card">
+    <h4 class="section-title"><i class="fa-solid fa-clock-rotate-left"></i> Follow-up History</h4>
+    {% if followups %}
+    <div class="timeline">
+      {% for fu in followups %}
+      <div class="timeline-item">
+        <div class="timeline-dot"></div>
+        <div class="timeline-content">
+          <div class="tl-header">
+            <span class="tl-date">{{ fu.created_at.strftime('%Y-%m-%d %H:%M') if fu.created_at else '—' }}</span>
+            <span class="badge badge-{{ fu.status|lower }}">{{ fu.status }}</span>
+          </div>
+          <p class="tl-text">{{ fu.conversation or '(no notes)' }}</p>
+          {% if fu.followup_date %}
+          <div class="tl-meta"><i class="fa-regular fa-calendar"></i> Next: {{ fu.followup_date }}</div>
+          {% endif %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty-state"><i class="fa-solid fa-phone"></i><p>No follow-ups logged yet.</p></div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

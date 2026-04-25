@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta name="csrf-token" content="{{ csrf_token() }}"/>
+  <title>Login - HeavyLift CRM</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    :root{
+      --yellow:#F59E0B;
+      --yellow-dark:#D97706;
+      --yellow-light:#FFF8E7;
+      --black:#0A0A0A;
+      --text:#1A1A2E;
+      --muted:#6B7280;
+      --border:#E5E7EB;
+      --white:#FFFFFF;
+      --radius:20px;
+    }
+
+    body{
+      font-family:'Roboto',sans-serif;
+      min-height:100vh;
+      background:#0F1115;
+      color:var(--text);
+    }
+
+    .page{
+      min-height:100vh;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      padding:32px 20px;
+      position:relative;
+      overflow:hidden;
+    }
+
+    .bg{
+      position:fixed;
+      inset:0;
+      background:
+        radial-gradient(circle at top left, rgba(245,158,11,.16), transparent 30%),
+        radial-gradient(circle at bottom right, rgba(217,119,6,.12), transparent 26%),
+        linear-gradient(135deg, #0B0D11 0%, #111318 48%, #171A20 100%);
+    }
+
+    .bg::after{
+      content:"";
+      position:absolute;
+      inset:0;
+      background-image:
+        linear-gradient(rgba(255,255,255,.035) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,.035) 1px, transparent 1px);
+      background-size:56px 56px;
+      mask-image:linear-gradient(180deg, rgba(0,0,0,.75), transparent 88%);
+    }
+
+    .shell{
+      position:relative;
+      z-index:1;
+      width:min(980px, 100%);
+    }
+
+    .card-wrap{
+      display:grid;
+      grid-template-columns:minmax(0,1.08fr) minmax(360px,.92fr);
+      min-height:580px;
+      border-radius:var(--radius);
+      overflow:hidden;
+      border:1px solid rgba(255,255,255,.08);
+      background:rgba(255,255,255,.97);
+      box-shadow:0 28px 70px rgba(0,0,0,.38);
+    }
+
+    .left{
+      background:linear-gradient(180deg,#111318 0%,#171B22 100%);
+      padding:48px 42px;
+      color:var(--white);
+      display:flex;
+      flex-direction:column;
+      justify-content:space-between;
+      border-right:1px solid rgba(245,158,11,.12);
+    }
+
+    .brand{
+      display:flex;
+      align-items:center;
+      gap:12px;
+      margin-bottom:34px;
+    }
+
+    .brand-icon{
+      width:48px;
+      height:48px;
+      background:var(--yellow);
+      border-radius:12px;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      font-size:1rem;
+      font-weight:900;
+      color:var(--black);
+      flex-shrink:0;
+    }
+
+    .brand-name{
+      font-size:1.35rem;
+      font-weight:900;
+      color:var(--white);
+      line-height:1.1;
+    }
+
+    .brand-sub{
+      font-size:.7rem;
+      color:#FCD34D;
+      text-transform:uppercase;
+      letter-spacing:.1em;
+      font-weight:600;
+      margin-top:3px;
+    }
+
+    .eyebrow{
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+      width:fit-content;
+      padding:8px 12px;
+      border-radius:999px;
+      border:1px solid rgba(245,158,11,.24);
+      background:rgba(245,158,11,.08);
+      color:#FCD34D;
+      font-size:.78rem;
+      font-weight:700;
+      margin-bottom:22px;
+    }
+
+    .left h1{
+      font-size:2.15rem;
+      font-weight:900;
+      line-height:1.12;
+      margin-bottom:14px;
+      max-width:9ch;
+    }
+
+    .left h1 span{color:var(--yellow)}
+
+    .left p{
+      font-size:.94rem;
+      line-height:1.7;
+      color:rgba(255,255,255,.72);
+      max-width:34ch;
+    }
+
+    .features{
+      list-style:none;
+      display:grid;
+      gap:14px;
+      margin-top:34px;
+    }
+
+    .features li{
+      display:flex;
+      align-items:flex-start;
+      gap:12px;
+      font-size:.9rem;
+      line-height:1.5;
+      color:rgba(255,255,255,.78);
+    }
+
+    .features li i{
+      width:16px;
+      margin-top:3px;
+      color:var(--yellow);
+      text-align:center;
+      flex-shrink:0;
+    }
+
+    .left-footer{
+      margin-top:34px;
+      padding-top:18px;
+      border-top:1px solid rgba(255,255,255,.08);
+      font-size:.8rem;
+      line-height:1.6;
+      color:rgba(255,255,255,.58);
+    }
+
+    .right{
+      background:linear-gradient(180deg,#FFFFFF 0%,#FCFCFD 100%);
+      padding:48px 44px;
+      display:flex;
+      flex-direction:column;
+      justify-content:center;
+    }
+
+    .mobile-brand{
+      display:none;
+      align-items:center;
+      gap:10px;
+      margin-bottom:24px;
+    }
+
+    .mobile-brand .brand-icon{
+      width:42px;
+      height:42px;
+      border-radius:11px;
+      font-size:.92rem;
+    }
+
+    .panel-top{margin-bottom:28px}
+
+    .kicker{
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+      padding:7px 11px;
+      border-radius:999px;
+      border:1px solid #FDE68A;
+      background:var(--yellow-light);
+      color:#92400E;
+      font-size:.78rem;
+      font-weight:700;
+      margin-bottom:16px;
+    }
+
+    .right h2{
+      font-size:1.9rem;
+      font-weight:900;
+      color:#111827;
+      margin-bottom:8px;
+    }
+
+    .sub{
+      color:var(--muted);
+      font-size:.94rem;
+      line-height:1.65;
+      max-width:34ch;
+    }
+
+    .flash{
+      border-radius:12px;
+      padding:12px 14px;
+      font-size:.85rem;
+      margin-bottom:14px;
+      display:flex;
+      align-items:flex-start;
+      gap:9px;
+      line-height:1.5;
+    }
+
+    .flash-danger{background:#FEF2F2;color:#991B1B;border:1px solid #FECACA}
+    .flash-success{background:#F0FDF4;color:#065F46;border:1px solid #A7F3D0}
+    .flash-warning{background:#FFFBEB;color:#92400E;border:1px solid #FDE68A}
+
+    form{
+      display:grid;
+      gap:18px;
+    }
+
+    .form-group{margin:0}
+
+    .form-group label{
+      display:block;
+      font-size:.84rem;
+      font-weight:700;
+      color:#374151;
+      margin-bottom:8px;
+    }
+
+    .iw{position:relative}
+
+    .iw i{
+      position:absolute;
+      left:15px;
+      top:50%;
+      transform:translateY(-50%);
+      color:#9CA3AF;
+      font-size:.88rem;
+      pointer-events:none;
+    }
+
+    .iw input{
+      width:100%;
+      height:52px;
+      padding:0 16px 0 44px;
+      border:1.5px solid var(--border);
+      border-radius:12px;
+      background:#FFFFFF;
+      font-size:.96rem;
+      color:#111827;
+      outline:none;
+      transition:border-color .2s, box-shadow .2s, background .2s;
+      font-family:'Roboto',sans-serif;
+    }
+
+    .iw input::placeholder{color:#9CA3AF}
+
+    .iw input:focus{
+      border-color:var(--yellow);
+      box-shadow:0 0 0 4px rgba(245,158,11,.12);
+    }
+
+    .btn-login{
+      width:100%;
+      height:52px;
+      margin-top:4px;
+      border:none;
+      border-radius:12px;
+      background:var(--yellow);
+      color:var(--black);
+      font-size:.96rem;
+      font-weight:700;
+      cursor:pointer;
+      transition:transform .18s, box-shadow .18s, background .18s;
+      box-shadow:0 12px 24px rgba(245,158,11,.24);
+      font-family:'Roboto',sans-serif;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      gap:8px;
+    }
+
+    .btn-login:hover{
+      background:var(--yellow-dark);
+      transform:translateY(-1px);
+      box-shadow:0 16px 30px rgba(245,158,11,.28);
+    }
+
+    .btn-login:active{transform:translateY(0)}
+
+    .btn-login:focus-visible{
+      outline:none;
+      box-shadow:0 0 0 4px rgba(245,158,11,.18), 0 12px 24px rgba(245,158,11,.24);
+    }
+
+    .restricted{
+      margin-top:18px;
+      padding:14px 15px;
+      border-radius:12px;
+      background:#F9FAFB;
+      border:1px solid var(--border);
+      display:flex;
+      align-items:flex-start;
+      gap:10px;
+      font-size:.83rem;
+      line-height:1.55;
+      color:#4B5563;
+    }
+
+    .restricted i{
+      color:var(--yellow-dark);
+      margin-top:2px;
+      flex-shrink:0;
+    }
+
+    .restricted strong{
+      display:block;
+      color:#111827;
+      margin-bottom:2px;
+    }
+
+    @media(max-width:860px){
+      .card-wrap{
+        grid-template-columns:1fr;
+      }
+
+      .left{
+        padding:40px 34px;
+      }
+
+      .left h1{
+        max-width:none;
+      }
+    }
+
+    @media(max-width:700px){
+      .page{
+        padding:18px;
+      }
+
+      .card-wrap{
+        min-height:auto;
+      }
+
+      .left{
+        display:none;
+      }
+
+      .right{
+        padding:34px 24px 26px;
+      }
+
+      .mobile-brand{
+        display:flex;
+      }
+
+      .right h2{
+        font-size:1.65rem;
+      }
+    }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="bg"></div>
+
+  <div class="shell">
+    <div class="card-wrap">
+      <div class="left">
+        <div>
+          <div class="brand">
+            <div class="brand-icon">HL</div>
+            <div>
+              <div class="brand-name">HeavyLift</div>
+              <div class="brand-sub">CRM Platform</div>
+            </div>
+          </div>
+
+          <div class="eyebrow">
+            <i class="fa-solid fa-shield-halved"></i>
+            Training center operations
+          </div>
+
+          <h1>Manage every <span>inquiry</span> with clarity.</h1>
+        </div>
+      </div>
+
+      <div class="right">
+        <div class="mobile-brand">
+          <div class="brand-icon">HL</div>
+          <div>
+            <div class="brand-name" style="color:#111827;font-size:1.1rem">HeavyLift</div>
+            <div class="brand-sub" style="color:#B45309">CRM Platform</div>
+          </div>
+        </div>
+
+        <div class="panel-top">
+          <div class="kicker">
+            <i class="fa-solid fa-lock"></i>
+            Staff sign in
+          </div>
+          <h2>Welcome back</h2>
+          <p class="sub">Use your assigned credentials to access HeavyLift CRM and continue working from where you left off.</p>
+        </div>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}{% for cat,msg in messages %}
+            <div class="flash flash-{{ cat }}"><i class="fa-solid fa-circle-info"></i> {{ msg }}</div>
+          {% endfor %}{% endif %}
+        {% endwith %}
+
+        <form method="POST" action="{{ url_for('auth.login') }}">
+          {{ csrf_input() }}
+          <div style="position:absolute;left:-9999px;opacity:0;pointer-events:none" aria-hidden="true">
+            <label>Website</label>
+            <input type="text" name="website" tabindex="-1" autocomplete="off"/>
+          </div>
+          <div class="form-group">
+            <label>Username</label>
+            <div class="iw"><i class="fa-solid fa-user"></i>
+              <input type="text" name="username" required placeholder="Enter username" autocomplete="username"/>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label>Password</label>
+            <div class="iw"><i class="fa-solid fa-lock"></i>
+              <input type="password" name="password" required placeholder="Enter password" autocomplete="current-password"/>
+            </div>
+          </div>
+
+          <button type="submit" class="btn-login">
+            <i class="fa-solid fa-arrow-right-to-bracket"></i>
+            Sign In
+          </button>
+        </form>
+
+        <div class="restricted">
+          <i class="fa-solid fa-shield-halved"></i>
+          <div>
+            <strong>Restricted system</strong>
+            Account creation and access changes are managed by administrators only.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

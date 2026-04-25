@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}{{ action }} Offer — HeavyLift CRM{% endblock %}
+{% block page_title %}{{ action }} Offer{% endblock %}
+{% block content %}
+{% set values = form_data or {} %}
+{% set location_value = values.get('location_id', offer.location_id if offer else '') | string %}
+{% set discount_type_value = values.get('discount_type', offer.discount_type if offer else 'flat') %}
+{% set is_active_value = values.get('is_active', 'true' if (not offer or offer.is_active) else 'false') %}
+<div class="form-card">
+  <form method="POST">
+    {{ csrf_input() }}
+    <div class="form-row-2">
+      <div class="form-group">
+        <label>Offer Name <span class="req">*</span></label>
+        <div class="input-wrap"><i class="fa-solid fa-tag"></i>
+          <input type="text" name="name" required placeholder="e.g. Early Bird 20%" value="{{ values.get('name', offer.name if offer else '') }}"/>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Location (leave blank for all)</label>
+        <div class="input-wrap"><i class="fa-solid fa-location-dot"></i>
+          <select name="location_id">
+            <option value="">— All Locations —</option>
+            {% for loc in locations %}
+            <option value="{{ loc.id }}" {% if location_value == loc.id|string %}selected{% endif %}>{{ loc.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Discount Type</label>
+        <div class="input-wrap"><i class="fa-solid fa-percent"></i>
+          <select name="discount_type" id="discType">
+            <option value="flat" {% if discount_type_value == 'flat' %}selected{% endif %}>Flat (₹)</option>
+            <option value="percent" {% if discount_type_value == 'percent' %}selected{% endif %}>Percent (%)</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Discount Value</label>
+        <div class="input-wrap"><i class="fa-solid fa-indian-rupee-sign"></i>
+          <input type="number" name="discount_value" step="1" min="0" placeholder="e.g. 2000" value="{{ values.get('discount_value', offer.discount_value if offer else '') }}"/>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Valid From</label>
+        <div class="input-wrap"><i class="fa-regular fa-calendar"></i>
+          <input type="date" name="valid_from" value="{{ values.get('valid_from', offer.valid_from if offer else '') }}"/>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Valid To</label>
+        <div class="input-wrap"><i class="fa-regular fa-calendar"></i>
+          <input type="date" name="valid_to" value="{{ values.get('valid_to', offer.valid_to if offer else '') }}"/>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Status</label>
+        <div class="input-wrap"><i class="fa-solid fa-toggle-on"></i>
+          <select name="is_active">
+            <option value="true" {% if is_active_value == 'true' %}selected{% endif %}>Active</option>
+            <option value="false" {% if is_active_value == 'false' %}selected{% endif %}>Inactive</option>
+          </select>
+        </div>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Description</label>
+      <textarea name="description" rows="3" class="form-textarea" placeholder="Optional details…">{{ values.get('description', offer.description if offer else '') }}</textarea>
+    </div>
+    <div class="form-actions">
+      <button type="submit" class="btn btn-primary"><i class="fa-solid fa-floppy-disk"></i> Save Offer</button>
+      <a href="{{ url_for('offers.index') }}" class="btn btn-outline"><i class="fa-solid fa-xmark"></i> Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

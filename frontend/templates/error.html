@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Error {{ code }} — HeavyLift CRM</title>
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
+  <style>
+    body{font-family:'Roboto',sans-serif;background:#111318;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0}
+    .box{text-align:center;padding:60px 40px;background:#1a1a2e;border-radius:20px;border:1px solid rgba(245,158,11,.2);box-shadow:0 40px 80px rgba(0,0,0,.5);max-width:500px;width:90%}
+    .code{font-size:6rem;font-weight:900;color:#F59E0B;line-height:1}
+    h2{color:#fff;margin:12px 0 8px;font-size:1.4rem}
+    p{color:#6B7280;font-size:.9rem}
+    a{display:inline-flex;align-items:center;gap:8px;margin-top:24px;padding:12px 28px;background:#F59E0B;color:#0A0A0A;border-radius:10px;text-decoration:none;font-weight:700;transition:all .2s}
+    a:hover{background:#D97706;transform:translateY(-2px)}
+  </style>
+</head>
+<body>
+  <div class="box">
+    <div class="code">{{ code }}</div>
+    <h2>{{ msg }}</h2>
+    <p>Something went wrong. Please try again or go back to the dashboard.</p>
+    <a href="/dashboard"><i class="fa-solid fa-house"></i> Back to Dashboard</a>
+  </div>
+</body>
+</html>
