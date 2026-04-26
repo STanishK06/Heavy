@@ -5,12 +5,12 @@
 <div class="section-card">
   <!-- Filter Panel -->
   <div class="filter-panel">
-    <div class="filter-toggle" onclick="this.nextElementSibling.classList.toggle('open');this.querySelector('.filter-chevron').style.transform=this.nextElementSibling.classList.contains('open')?'rotate(180deg)':''">
+    <div class="filter-toggle">
       <span><i class="fa-solid fa-filter" style="color:var(--yellow);margin-right:6px"></i> Filter & Search</span>
       <i class="fa-solid fa-chevron-down filter-chevron" style="transition:transform .2s;color:var(--muted)"></i>
     </div>
     <div class="filter-body {% if filters.name or filters.mobile or filters.location or filters.course or filters.status or filters.date_from or filters.date_to or filters.last_days %}open{% endif %}">
-      <form method="GET">
+      <form method="GET" action="{{ url_for('inquiries.index') }}">
         <div class="filter-grid">
           <div class="form-group"><label>Name</label><input type="text" name="name" value="{{ filters.name }}" placeholder="Search name…"/></div>
           <div class="form-group"><label>Mobile</label><input type="text" name="mobile" value="{{ filters.mobile }}" placeholder="Mobile…"/></div>
@@ -102,17 +102,4 @@
   </div>
   {% endif %}
 </div>
-{% endblock %}
-{% block scripts %}
-<script>
-document.querySelectorAll('th.sortable').forEach(th=>{
-  th.addEventListener('click',()=>{
-    const u=new URL(window.location.href);
-    const cur=u.searchParams.get('sort'),dir=u.searchParams.get('dir');
-    u.searchParams.set('sort',th.dataset.col);
-    u.searchParams.set('dir',cur===th.dataset.col&&dir==='asc'?'desc':'asc');
-    window.location=u.toString();
-  });
-});
-</script>
 {% endblock %}
