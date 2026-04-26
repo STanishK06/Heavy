@@ -4,44 +4,27 @@ routes/locations.py — Locations with drag-order & analytics
 from flask import Blueprint, current_app, render_template, request, redirect, url_for, flash, jsonify, session
 from database import get_db, close_db
 from routes.auth import login_required, role_required
-from validation import clean_optional_text, clean_text, validate_ordered_ids
+from routes.location_helpers import (
+    apply_location_search,
+    build_location_scope,
+    fetch_location,
+    parse_location_search,
+    render_location_form,
+    validate_location_form,
+)
+from validation import validate_ordered_ids
 
 locations_bp = Blueprint("locations", __name__, url_prefix="/locations")
-
-
-def _validate_location_form(form):
-    return {
-        "name": clean_text(form.get("name"), "Location name", required=True, max_length=100),
-        "description": clean_optional_text(form.get("description"), "Description", max_length=1000, multiline=True),
-    }
-
-
-def _render_location_form(*, location, action, form_data=None, form_error_popup=None):
-    return render_template(
-        "locations/form.html",
-        location=location,
-        action=action,
-        form_data=form_data or {},
-        form_error_popup=form_error_popup,
-    )
-
 @locations_bp.route("/")
 @login_required
 def index():
-    search = clean_text(request.args.get("q",""), "Search", max_length=100)
+    search = parse_location_search(request.args)
     role = session.get("role")
     assigned_loc_id = session.get("location_id")
     conn = get_db(); cur = conn.cursor()
-    q = "SELECT * FROM locations WHERE 1=1"
-    p = []
-    if role == "teacher" and assigned_loc_id:
-        q += " AND id=%s"
-        p.append(assigned_loc_id)
-    if search:
-        q += " AND (name ILIKE %s OR description ILIKE %s)"
-        p += [f"%{search}%", f"%{search}%"]
-    q += " ORDER BY position, created_at;"
-    cur.execute(q, p)
+    query, params = build_location_scope(role, assigned_loc_id)
+    query, params = apply_location_search(query, params, search)
+    cur.execute(query + " ORDER BY position, created_at;", params)
     locations = cur.fetchall(); close_db(conn, commit=False)
     return render_template("locations/index.html", locations=locations, search=search)
 
@@ -52,7 +35,7 @@ def add():
     if request.method == "POST":
         conn = get_db(); cur = conn.cursor()
         try:
-            cleaned = _validate_location_form(request.form)
+            cleaned = validate_location_form(request.form)
             cur.execute("SELECT COALESCE(MAX(position),0)+1 AS next_position FROM locations;")
             pos = cur.fetchone()["next_position"]
             cur.execute("INSERT INTO locations (name,description,position) VALUES (%s,%s,%s);", (cleaned["name"], cleaned["description"], pos))
@@ -60,7 +43,7 @@ def add():
             return redirect(url_for("locations.index"))
         except ValueError as exc:
             close_db(conn,commit=False); flash(str(exc),"danger")
-            return _render_location_form(
+            return render_location_form(
                 location=None,
                 action="Add",
                 form_data=request.form.to_dict(flat=True),
@@ -71,31 +54,31 @@ def add():
             close_db(conn,commit=False)
             message = "Unable to create the location right now."
             flash(message,"danger")
-            return _render_location_form(
+            return render_location_form(
                 location=None,
                 action="Add",
                 form_data=request.form.to_dict(flat=True),
                 form_error_popup=message,
             )
-    return _render_location_form(location=None, action="Add")
+    return render_location_form(location=None, action="Add")
 
 @locations_bp.route("/<int:loc_id>/edit", methods=["GET","POST"])
 @login_required
 @role_required("admin","developer")
 def edit(loc_id):
     conn = get_db(); cur = conn.cursor()
-    cur.execute("SELECT * FROM locations WHERE id=%s;", (loc_id,))
-    location = cur.fetchone(); close_db(conn, commit=False)
+    location = fetch_location(cur, loc_id)
+    close_db(conn, commit=False)
     if not location: flash("Not found.","danger"); return redirect(url_for("locations.index"))
     if request.method == "POST":
         try:
-            cleaned = _validate_location_form(request.form)
+            cleaned = validate_location_form(request.form)
             conn = get_db(); cur = conn.cursor()
             cur.execute("UPDATE locations SET name=%s,description=%s WHERE id=%s;", (cleaned["name"], cleaned["description"], loc_id))
             close_db(conn); flash("Updated.","success"); return redirect(url_for("locations.index"))
         except ValueError as exc:
             flash(str(exc),"danger")
-            return _render_location_form(
+            return render_location_form(
                 location=location,
                 action="Edit",
                 form_data=request.form.to_dict(flat=True),
@@ -106,13 +89,13 @@ def edit(loc_id):
             close_db(conn,commit=False)
             message = "Unable to update the location right now."
             flash(message,"danger")
-            return _render_location_form(
+            return render_location_form(
                 location=location,
                 action="Edit",
                 form_data=request.form.to_dict(flat=True),
                 form_error_popup=message,
             )
-    return _render_location_form(location=location, action="Edit")
+    return render_location_form(location=location, action="Edit")
 
 @locations_bp.route("/<int:loc_id>/delete", methods=["POST"])
 @login_required
@@ -149,8 +132,7 @@ def analytics(loc_id):
 
     conn = get_db(); cur = conn.cursor()
 
-    cur.execute("SELECT * FROM locations WHERE id=%s;", (loc_id,))
-    location = cur.fetchone()
+    location = fetch_location(cur, loc_id)
     if not location: close_db(conn,commit=False); flash("Not found.","danger"); return redirect(url_for("locations.index"))
 
     # Courses at this location

@@ -4,71 +4,53 @@ routes/courses.py — Courses with drag-order & analytics
 from flask import Blueprint, current_app, render_template, request, redirect, url_for, flash, jsonify, session
 from database import get_db, close_db
 from routes.auth import login_required, role_required
-from validation import clean_optional_text, clean_text, parse_decimal, parse_optional_int, validate_ordered_ids
+from routes.course_helpers import (
+    apply_course_filters,
+    build_course_scope,
+    fetch_course,
+    load_course_locations,
+    parse_course_filters,
+    render_course_form,
+    validate_course_form,
+)
+from validation import validate_ordered_ids
 
 courses_bp = Blueprint("courses", __name__, url_prefix="/courses")
-
-
-def _validate_course_form(form):
-    return {
-        "name": clean_text(form.get("name"), "Course name", required=True, max_length=100),
-        "description": clean_optional_text(form.get("description"), "Description", max_length=1000, multiline=True),
-        "location_id": parse_optional_int(form.get("location_id"), "Location"),
-        "fees": parse_decimal(form.get("fees", "0"), "Fees"),
-    }
-
-
-def _render_course_form(*, course, locations, action, form_data=None, form_error_popup=None):
-    return render_template(
-        "courses/form.html",
-        course=course,
-        locations=locations,
-        action=action,
-        form_data=form_data or {},
-        form_error_popup=form_error_popup,
-    )
-
 @courses_bp.route("/")
 @login_required
 def index():
-    name_q = clean_text(request.args.get("name",""), "Name", max_length=100)
-    loc_q  = clean_text(request.args.get("location",""), "Location", max_length=100)
+    filters = parse_course_filters(request.args)
+    role = session.get("role")
+    loc_id = session.get("location_id")
     conn = get_db(); cur = conn.cursor()
-    role = session.get("role"); loc_id = session.get("location_id")
 
-    q = """SELECT c.*, l.name AS location_name
-           FROM courses c LEFT JOIN locations l ON c.location_id=l.id WHERE 1=1"""
-    p = []
-    if role == "teacher" and loc_id:
-        q += " AND c.location_id=%s"; p.append(loc_id)
-    if name_q:
-        q += " AND c.name ILIKE %s"; p.append(f"%{name_q}%")
-    if loc_q:
-        q += " AND l.name ILIKE %s"; p.append(f"%{loc_q}%")
-    q += " ORDER BY c.position, c.created_at;"
-    cur.execute(q, p)
+    query, params = build_course_scope(role, loc_id)
+    query, params = apply_course_filters(query, params, filters)
+    cur.execute(query + " ORDER BY c.position, c.created_at;", params)
     courses = cur.fetchall()
-    if role == "teacher" and loc_id:
-        cur.execute("SELECT id,name FROM locations WHERE id=%s ORDER BY position,name;", (loc_id,))
-        locations = cur.fetchall()
-    else:
-        cur.execute("SELECT id,name FROM locations ORDER BY position,name;")
-        locations = cur.fetchall()
+    locations = load_course_locations(cur, role, loc_id)
     close_db(conn, commit=False)
-    return render_template("courses/index.html", courses=courses, locations=locations,
-                           name_q=name_q, loc_q=loc_q)
+    return render_template(
+        "courses/index.html",
+        courses=courses,
+        locations=locations,
+        name_q=filters["name"],
+        loc_q=filters["location"],
+    )
 
 @courses_bp.route("/add", methods=["GET","POST"])
 @login_required
 @role_required("admin","developer")
 def add():
+    role = session.get("role")
+    loc_id = session.get("location_id")
     conn = get_db(); cur = conn.cursor()
-    cur.execute("SELECT id,name FROM locations ORDER BY position,name;")
-    locations = cur.fetchall(); close_db(conn, commit=False)
+    locations = load_course_locations(cur, role, loc_id)
+    close_db(conn, commit=False)
 
     if request.method == "POST":
         try:
-            cleaned = _validate_course_form(request.form)
+            cleaned = validate_course_form(request.form)
             conn = get_db(); cur = conn.cursor()
             cur.execute("SELECT COALESCE(MAX(position),0)+1 AS next_position FROM courses;")
             pos = cur.fetchone()["next_position"]
@@ -78,7 +60,7 @@ def add():
             return redirect(url_for("courses.index"))
         except ValueError as exc:
             flash(str(exc), "danger")
-            return _render_course_form(
+            return render_course_form(
                 course=None,
                 locations=locations,
                 action="Add",
@@ -90,7 +72,7 @@ def add():
             close_db(conn,commit=False)
             message = "Unable to create the course right now."
             flash(message,"danger")
-            return _render_course_form(
+            return render_course_form(
                 course=None,
                 locations=locations,
                 action="Add",
@@ -98,29 +80,30 @@ def add():
                 form_error_popup=message,
             )
 
-    return _render_course_form(course=None, locations=locations, action="Add")
+    return render_course_form(course=None, locations=locations, action="Add")
 
 @courses_bp.route("/<int:cid>/edit", methods=["GET","POST"])
 @login_required
 @role_required("admin","developer")
 def edit(cid):
+    role = session.get("role")
+    loc_id = session.get("location_id")
     conn = get_db(); cur = conn.cursor()
-    cur.execute("SELECT * FROM courses WHERE id=%s;", (cid,))
-    course = cur.fetchone()
-    cur.execute("SELECT id,name FROM locations ORDER BY position,name;")
-    locations = cur.fetchall(); close_db(conn, commit=False)
+    course = fetch_course(cur, cid)
+    locations = load_course_locations(cur, role, loc_id)
+    close_db(conn, commit=False)
     if not course: flash("Not found.","danger"); return redirect(url_for("courses.index"))
 
     if request.method == "POST":
         try:
-            cleaned = _validate_course_form(request.form)
+            cleaned = validate_course_form(request.form)
             conn = get_db(); cur = conn.cursor()
             cur.execute("UPDATE courses SET name=%s,description=%s,location_id=%s,fees=%s WHERE id=%s;",
                         (cleaned["name"], cleaned["description"], cleaned["location_id"], cleaned["fees"], cid))
             close_db(conn); flash("Updated.","success"); return redirect(url_for("courses.index"))
         except ValueError as exc:
             flash(str(exc), "danger")
-            return _render_course_form(
+            return render_course_form(
                 course=course,
                 locations=locations,
                 action="Edit",
@@ -132,14 +115,14 @@ def edit(cid):
             close_db(conn,commit=False)
             message = "Unable to update the course right now."
             flash(message,"danger")
-            return _render_course_form(
+            return render_course_form(
                 course=course,
                 locations=locations,
                 action="Edit",
                 form_data=request.form.to_dict(flat=True),
                 form_error_popup=message,
             )
-    return _render_course_form(course=course, locations=locations, action="Edit")
+    return render_course_form(course=course, locations=locations, action="Edit")
 
 @courses_bp.route("/<int:cid>/delete", methods=["POST"])
 @login_required
