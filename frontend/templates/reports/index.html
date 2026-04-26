@@ -57,99 +57,223 @@
 Chart.defaults.font.family = 'Roboto';
 Chart.defaults.color = '#6B7280';
 
-const YELLOW='#F59E0B',GREEN='#10B981',RED='#EF4444',BLUE='#3B82F6',PURPLE='#8B5CF6',TEAL='#14B8A6';
-const PALETTE=[YELLOW,GREEN,BLUE,PURPLE,RED,TEAL,'#F97316','#EC4899','#06B6D4','#84CC16'];
+const YELLOW = '#F59E0B';
+const GREEN = '#10B981';
+const RED = '#EF4444';
+const BLUE = '#3B82F6';
+const PURPLE = '#8B5CF6';
+const TEAL = '#14B8A6';
 
-let charts={};
-function destroy(id){if(charts[id]){charts[id].destroy();delete charts[id];}}
-const formatChartMonth = (value) => /^\d{4}-\d{2}$/.test(value || '')
-  ? new Date(`${value}-01T00:00:00`).toLocaleDateString('en-IN', {month:'short', year:'2-digit'})
-  : (value || '');
+let charts = {};
 
-function setPreset(t){
-  const today=new Date(),y=today.getFullYear(),m=today.getMonth();
-  document.getElementById('dateTo').value=today.toISOString().split('T')[0];
-  document.getElementById('dateFrom').value=t==='month'?new Date(y,m,1).toISOString().split('T')[0]:t==='year'?`${y}-01-01`:'2020-01-01';
+function destroy(id) {
+  if (charts[id]) {
+    charts[id].destroy();
+    delete charts[id];
+  }
+}
+
+function formatCurrency(value) {
+  return `Rs ${Number(value || 0).toLocaleString('en-IN')}`;
+}
+
+function formatChartMonth(value) {
+  return /^\d{4}-\d{2}$/.test(value || '')
+    ? new Date(`${value}-01T00:00:00`).toLocaleDateString('en-IN', {month: 'short', year: '2-digit'})
+    : (value || '');
+}
+
+function setPreset(type) {
+  const today = new Date();
+  const y = today.getFullYear();
+  const m = today.getMonth();
+  document.getElementById('dateTo').value = today.toISOString().split('T')[0];
+  document.getElementById('dateFrom').value = type === 'month'
+    ? new Date(y, m, 1).toISOString().split('T')[0]
+    : type === 'year'
+      ? `${y}-01-01`
+      : '2020-01-01';
   loadReports();
 }
 
-async function loadReports(){
-  const from=document.getElementById('dateFrom').value||'';
-  const to=document.getElementById('dateTo').value||'';
-  const r=await fetch(`/reports/data?from=${from}&to=${to}`);
-  const d=await r.json();
-  const s=d.summary||{};
+async function loadReports() {
+  const from = document.getElementById('dateFrom').value || '';
+  const to = document.getElementById('dateTo').value || '';
+  const response = await fetch(`/reports/data?from=${from}&to=${to}`);
+  const data = await response.json();
 
-  document.getElementById('sTotal').textContent=s.total||0;
-  document.getElementById('sConverted').textContent=s.converted||0;
-  document.getElementById('sRevenue').textContent='₹'+(Number(s.revenue||0).toLocaleString('en-IN'));
-  document.getElementById('sPending').textContent='₹'+(Number(s.pending||0).toLocaleString('en-IN'));
+  if (!response.ok || !data.ok) {
+    alert(data.msg || 'Unable to load report data.');
+    return;
+  }
+
+  const summary = data.summary || {};
+  document.getElementById('sTotal').textContent = summary.total || 0;
+  document.getElementById('sConverted').textContent = summary.converted || 0;
+  document.getElementById('sRevenue').textContent = formatCurrency(summary.revenue);
+  document.getElementById('sPending').textContent = formatCurrency(summary.pending);
 
   destroy('trend');
-  charts['trend']=new Chart(document.getElementById('trendChart'),{
-    type:'line',
-    data:{
-      labels:d.trend.map(r=>formatChartMonth(r.month)),
-      datasets:[
-        {label:'Inquiries',data:d.trend.map(r=>r.inquiries),borderColor:YELLOW,tension:.35,fill:false,spanGaps:true,pointRadius:3,pointHoverRadius:5,pointBackgroundColor:YELLOW,borderWidth:2.5},
-        {label:'Admissions',data:d.trend.map(r=>r.admissions),borderColor:GREEN,tension:.35,fill:false,spanGaps:true,pointRadius:3,pointHoverRadius:5,pointBackgroundColor:GREEN,borderWidth:2.5}
+  charts.trend = new Chart(document.getElementById('trendChart'), {
+    type: 'line',
+    data: {
+      labels: data.trend.map((row) => formatChartMonth(row.month)),
+      datasets: [
+        {
+          label: 'Inquiries',
+          data: data.trend.map((row) => Number(row.inquiries || 0)),
+          borderColor: YELLOW,
+          backgroundColor: YELLOW,
+          tension: 0.35,
+          fill: false,
+          pointRadius: 3,
+          pointHoverRadius: 5,
+          borderWidth: 2.5,
+        },
+        {
+          label: 'Admissions',
+          data: data.trend.map((row) => Number(row.admissions || 0)),
+          borderColor: GREEN,
+          backgroundColor: GREEN,
+          tension: 0.35,
+          fill: false,
+          pointRadius: 3,
+          pointHoverRadius: 5,
+          borderWidth: 2.5,
+        }
       ]
     },
-    options:{responsive:true,interaction:{mode:'index',intersect:false},
-      plugins:{legend:{position:'top',labels:{boxWidth:12,padding:14,font:{size:12}}}},
-      scales:{y:{beginAtZero:true,grid:{color:'#F3F4F6'},ticks:{stepSize:1}},
-              x:{grid:{display:false}}}}
+    options: {
+      responsive: true,
+      interaction: {mode: 'index', intersect: false},
+      plugins: {
+        legend: {position: 'top', labels: {boxWidth: 12, padding: 14, font: {size: 12}}}
+      },
+      scales: {
+        y: {beginAtZero: true, grid: {color: '#F3F4F6'}, ticks: {stepSize: 1}},
+        x: {grid: {display: false}}
+      }
+    }
   });
 
   destroy('status');
-  const statusColors={Open:YELLOW,Converted:GREEN,Closed:RED};
-  charts['status']=new Chart(document.getElementById('statusChart'),{
-    type:'doughnut',
-    data:{
-      labels:d.status.map(r=>r.status),
-      datasets:[{data:d.status.map(r=>r.total),backgroundColor:d.status.map(r=>statusColors[r.status]||BLUE),hoverOffset:8,borderWidth:2}]
+  const statusColors = {Open: YELLOW, Converted: GREEN, Closed: RED};
+  charts.status = new Chart(document.getElementById('statusChart'), {
+    type: 'doughnut',
+    data: {
+      labels: data.status.map((row) => row.status),
+      datasets: [{
+        data: data.status.map((row) => Number(row.total || 0)),
+        backgroundColor: data.status.map((row) => statusColors[row.status] || BLUE),
+        hoverOffset: 8,
+        borderWidth: 2,
+      }]
     },
-    options:{responsive:true,cutout:'65%',
-      plugins:{legend:{position:'bottom',labels:{boxWidth:12,padding:12,font:{size:11}}},
-        tooltip:{callbacks:{label:ctx=>`${ctx.label}: ${ctx.raw}`}}}}
+    options: {
+      responsive: true,
+      cutout: '65%',
+      plugins: {
+        legend: {position: 'bottom', labels: {boxWidth: 12, padding: 12, font: {size: 11}}},
+        tooltip: {callbacks: {label: (ctx) => `${ctx.label}: ${ctx.raw}`}}
+      }
+    }
   });
 
   destroy('location');
-  charts['location']=new Chart(document.getElementById('locationChart'),{
-    type:'bar',
-    data:{
-      labels:d.location.map(r=>r.location||'Unknown'),
-      datasets:[
-        {label:'Inquiries',data:d.location.map(r=>r.inquiries),backgroundColor:YELLOW,borderRadius:6,barPercentage:.6},
-        {label:'Admissions',data:d.location.map(r=>r.admissions),backgroundColor:GREEN,borderRadius:6,barPercentage:.6},
-        {label:'Revenue (/1000)',data:d.location.map(r=>Math.round(r.revenue/1000)),backgroundColor:BLUE,borderRadius:6,barPercentage:.6}
+  charts.location = new Chart(document.getElementById('locationChart'), {
+    type: 'bar',
+    data: {
+      labels: data.location.map((row) => row.location || 'Unknown'),
+      datasets: [
+        {
+          label: 'Inquiries',
+          data: data.location.map((row) => Number(row.inquiries || 0)),
+          backgroundColor: YELLOW,
+          borderRadius: 6,
+          barPercentage: 0.6,
+        },
+        {
+          label: 'Admissions',
+          data: data.location.map((row) => Number(row.admissions || 0)),
+          backgroundColor: GREEN,
+          borderRadius: 6,
+          barPercentage: 0.6,
+        },
+        {
+          label: 'Revenue',
+          data: data.location.map((row) => Number(row.revenue || 0)),
+          backgroundColor: BLUE,
+          borderRadius: 6,
+          barPercentage: 0.6,
+          yAxisID: 'y1',
+        }
       ]
     },
-    options:{responsive:true,interaction:{mode:'index'},
-      plugins:{legend:{position:'top',labels:{boxWidth:12,padding:12,font:{size:11}}}},
-      scales:{y:{beginAtZero:true,grid:{color:'#F3F4F6'}},x:{grid:{display:false}}}}
+    options: {
+      responsive: true,
+      interaction: {mode: 'index'},
+      plugins: {
+        legend: {position: 'top', labels: {boxWidth: 12, padding: 12, font: {size: 11}}},
+        tooltip: {
+          callbacks: {
+            label: (ctx) => ctx.dataset.label === 'Revenue'
+              ? `${ctx.dataset.label}: ${formatCurrency(ctx.raw)}`
+              : `${ctx.dataset.label}: ${ctx.raw}`
+          }
+        }
+      },
+      scales: {
+        y: {beginAtZero: true, grid: {color: '#F3F4F6'}},
+        y1: {
+          beginAtZero: true,
+          position: 'right',
+          grid: {drawOnChartArea: false},
+          ticks: {callback: (value) => formatCurrency(value)}
+        },
+        x: {grid: {display: false}}
+      }
+    }
   });
 
   destroy('course');
-  charts['course']=new Chart(document.getElementById('courseChart'),{
-    type:'bar',
-    data:{
-      labels:d.course.map(r=>r.course||'Unknown'),
-      datasets:[
-        {label:'Inquiries',data:d.course.map(r=>r.inquiries),backgroundColor:PALETTE,borderRadius:6}
+  charts.course = new Chart(document.getElementById('courseChart'), {
+    type: 'bar',
+    data: {
+      labels: data.course.map((row) => row.course || 'Unknown'),
+      datasets: [
+        {
+          label: 'Inquiries',
+          data: data.course.map((row) => Number(row.inquiries || 0)),
+          backgroundColor: PURPLE,
+          borderRadius: 6,
+        },
+        {
+          label: 'Admissions',
+          data: data.course.map((row) => Number(row.admissions || 0)),
+          backgroundColor: TEAL,
+          borderRadius: 6,
+        }
       ]
     },
-    options:{indexAxis:'y',responsive:true,
-      plugins:{legend:{display:false},
-        tooltip:{callbacks:{label:ctx=>`Inquiries: ${ctx.raw}`}}},
-      scales:{x:{beginAtZero:true,grid:{color:'#F3F4F6'}},y:{grid:{display:false}}}}
+    options: {
+      indexAxis: 'y',
+      responsive: true,
+      plugins: {
+        legend: {display: true, position: 'top', labels: {boxWidth: 12, padding: 12, font: {size: 11}}},
+        tooltip: {callbacks: {label: (ctx) => `${ctx.dataset.label}: ${ctx.raw}`}}
+      },
+      scales: {
+        x: {beginAtZero: true, grid: {color: '#F3F4F6'}},
+        y: {grid: {display: false}}
+      }
+    }
   });
 }
 
-window.addEventListener('DOMContentLoaded',()=>{
-  const today=new Date();
-  document.getElementById('dateTo').value=today.toISOString().split('T')[0];
-  document.getElementById('dateFrom').value=`${today.getFullYear()}-01-01`;
+window.addEventListener('DOMContentLoaded', () => {
+  const today = new Date();
+  document.getElementById('dateTo').value = today.toISOString().split('T')[0];
+  document.getElementById('dateFrom').value = `${today.getFullYear()}-01-01`;
   loadReports();
 });
 </script>

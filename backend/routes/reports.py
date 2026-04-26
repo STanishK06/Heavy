@@ -1,86 +1,154 @@
 """
-routes/reports.py — Reports & Analytics
+routes/reports.py - Reports and analytics
 """
-from flask import Blueprint, render_template, request, jsonify, session
-from database import get_db, close_db
-from routes.auth import login_required, role_required
 from datetime import date
+
+from flask import Blueprint, jsonify, render_template, request, session
+
+from database import close_db, get_db
+from routes.auth import login_required, role_required
+from validation import parse_optional_date
 
 reports_bp = Blueprint("reports", __name__, url_prefix="/reports")
 
+_STATUS_ORDER = ("Open", "Converted", "Closed")
+
+
+def _parse_report_dates():
+    today = date.today()
+    default_from = date(today.year, 1, 1)
+    d_from = parse_optional_date(request.args.get("from"), "From date") or default_from
+    d_to = parse_optional_date(request.args.get("to"), "To date") or today
+    if d_from > d_to:
+        raise ValueError("From date cannot be later than To date.")
+    return d_from, d_to
+
+
+def _teacher_scope():
+    role = session.get("role")
+    loc_id = session.get("location_id")
+    if role == "teacher" and loc_id:
+        return " AND i.location_id=%s", [loc_id]
+    return "", []
+
+
 @reports_bp.route("/")
 @login_required
-@role_required("admin","developer","teacher")
+@role_required("admin", "developer", "teacher")
 def index():
     return render_template("reports/index.html")
 
+
 @reports_bp.route("/data")
 @login_required
-@role_required("admin","developer","teacher")
+@role_required("admin", "developer", "teacher")
 def data():
-    role   = session.get("role"); loc_id = session.get("location_id")
-    d_from = request.args.get("from", f"{date.today().year}-01-01")
-    d_to   = request.args.get("to",   date.today().isoformat())
+    try:
+        d_from, d_to = _parse_report_dates()
+    except ValueError as exc:
+        return jsonify({"ok": False, "msg": str(exc)}), 400
 
-    lc, lp = ("", []) if role != "teacher" or not loc_id else (" AND i.location_id=%s", [loc_id])
+    lc, lp = _teacher_scope()
 
-    conn = get_db(); cur = conn.cursor()
+    conn = get_db()
+    cur = conn.cursor()
 
-    # Inquiries vs Admissions trend (monthly)
-    cur.execute(f"""
-        SELECT TO_CHAR(inquiry_date,'YYYY-MM') AS month,
-               COUNT(*) AS inquiries,
-               SUM(CASE WHEN status='Converted' THEN 1 ELSE 0 END) AS admissions
-        FROM inquiries i WHERE inquiry_date BETWEEN %s AND %s {lc}
-        GROUP BY month ORDER BY month;
-    """, [d_from, d_to]+lp)
-    trend = cur.fetchall()
+    cur.execute(
+        f"""
+        WITH months AS (
+            SELECT generate_series(
+                date_trunc('month', %s::date),
+                date_trunc('month', %s::date),
+                interval '1 month'
+            )::date AS month_start
+        )
+        SELECT
+            TO_CHAR(months.month_start, 'YYYY-MM') AS month,
+            COALESCE(COUNT(i.id), 0) AS inquiries,
+            COALESCE(SUM(CASE WHEN i.status='Converted' THEN 1 ELSE 0 END), 0) AS admissions
+        FROM months
+        LEFT JOIN inquiries i
+            ON date_trunc('month', i.inquiry_date) = months.month_start
+           AND i.inquiry_date BETWEEN %s AND %s
+           {lc}
+        GROUP BY months.month_start
+        ORDER BY months.month_start;
+        """,
+        [d_from, d_to, d_from, d_to] + lp,
+    )
+    trend = [dict(row) for row in cur.fetchall()]
 
-    # Status breakdown
-    cur.execute(f"""
-        SELECT status, COUNT(*) AS total FROM inquiries i
-        WHERE inquiry_date BETWEEN %s AND %s {lc} GROUP BY status;
-    """, [d_from, d_to]+lp)
-    status_data = cur.fetchall()
+    cur.execute(
+        f"""
+        SELECT status, COUNT(*) AS total
+        FROM inquiries i
+        WHERE inquiry_date BETWEEN %s AND %s {lc}
+        GROUP BY status;
+        """,
+        [d_from, d_to] + lp,
+    )
+    raw_status = {row["status"]: int(row["total"] or 0) for row in cur.fetchall()}
+    status_data = [{"status": status, "total": raw_status.get(status, 0)} for status in _STATUS_ORDER]
 
-    # Location performance
-    cur.execute(f"""
-        SELECT l.name AS location, COUNT(*) AS inquiries,
-               SUM(CASE WHEN i.status='Converted' THEN 1 ELSE 0 END) AS admissions,
-               COALESCE(SUM(i.fees_paid),0) AS revenue
-        FROM inquiries i LEFT JOIN locations l ON i.location_id=l.id
+    cur.execute(
+        f"""
+        SELECT
+            COALESCE(l.name, 'Unknown') AS location,
+            COUNT(*) AS inquiries,
+            COALESCE(SUM(CASE WHEN i.status='Converted' THEN 1 ELSE 0 END), 0) AS admissions,
+            COALESCE(SUM(i.fees_paid), 0) AS revenue
+        FROM inquiries i
+        LEFT JOIN locations l ON i.location_id=l.id
         WHERE i.inquiry_date BETWEEN %s AND %s {lc}
-        GROUP BY l.name ORDER BY inquiries DESC;
-    """, [d_from, d_to]+lp)
-    location_data = cur.fetchall()
+        GROUP BY l.id, l.name
+        ORDER BY inquiries DESC, location ASC;
+        """,
+        [d_from, d_to] + lp,
+    )
+    location_data = [dict(row) for row in cur.fetchall()]
 
-    # Course performance
-    cur.execute(f"""
-        SELECT c.name AS course, COUNT(*) AS inquiries,
-               SUM(CASE WHEN i.status='Converted' THEN 1 ELSE 0 END) AS admissions,
-               COALESCE(SUM(i.fees_paid),0) AS revenue
-        FROM inquiries i LEFT JOIN courses c ON i.course_id=c.id
+    cur.execute(
+        f"""
+        SELECT
+            COALESCE(c.name, 'Unknown') AS course,
+            COUNT(*) AS inquiries,
+            COALESCE(SUM(CASE WHEN i.status='Converted' THEN 1 ELSE 0 END), 0) AS admissions,
+            COALESCE(SUM(i.fees_paid), 0) AS revenue
+        FROM inquiries i
+        LEFT JOIN courses c ON i.course_id=c.id
         WHERE i.inquiry_date BETWEEN %s AND %s {lc}
-        GROUP BY c.name ORDER BY inquiries DESC LIMIT 10;
-    """, [d_from, d_to]+lp)
-    course_data = cur.fetchall()
+        GROUP BY c.id, c.name
+        ORDER BY inquiries DESC, course ASC
+        LIMIT 10;
+        """,
+        [d_from, d_to] + lp,
+    )
+    course_data = [dict(row) for row in cur.fetchall()]
 
-    # Summary
-    cur.execute(f"""
-        SELECT COUNT(*) AS total,
-               SUM(CASE WHEN status='Converted' THEN 1 ELSE 0 END) AS converted,
-               COALESCE(SUM(fees_paid),0) AS revenue,
-               COALESCE(SUM(CASE WHEN status='Converted' THEN fees_total-fees_paid ELSE 0 END),0) AS pending
-        FROM inquiries i WHERE inquiry_date BETWEEN %s AND %s {lc};
-    """, [d_from, d_to]+lp)
-    summary = cur.fetchone()
+    cur.execute(
+        f"""
+        SELECT
+            COUNT(*) AS total,
+            COALESCE(SUM(CASE WHEN status='Converted' THEN 1 ELSE 0 END), 0) AS converted,
+            COALESCE(SUM(fees_paid), 0) AS revenue,
+            COALESCE(SUM(CASE WHEN status='Converted' THEN fees_total-fees_paid ELSE 0 END), 0) AS pending
+        FROM inquiries i
+        WHERE inquiry_date BETWEEN %s AND %s {lc};
+        """,
+        [d_from, d_to] + lp,
+    )
+    summary = dict(cur.fetchone() or {})
 
     close_db(conn, commit=False)
-    return jsonify({
-        "trend":    [dict(r) for r in trend],
-        "status":   [dict(r) for r in status_data],
-        "location": [dict(r) for r in location_data],
-        "course":   [dict(r) for r in course_data],
-        "summary":  dict(summary) if summary else {},
-        "from": d_from, "to": d_to
-    })
+    return jsonify(
+        {
+            "ok": True,
+            "trend": trend,
+            "status": status_data,
+            "location": location_data,
+            "course": course_data,
+            "summary": summary,
+            "from": d_from.isoformat(),
+            "to": d_to.isoformat(),
+        }
+    )
