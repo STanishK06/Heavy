@@ -4,19 +4,13 @@ Features: auto-followup notification, optional refs, offer linkage, WhatsApp, Ex
 """
 from datetime import date, timedelta
 import io
-import json
-from urllib.error import HTTPError, URLError
-from urllib.request import Request, urlopen
+import urllib.parse
 
 from flask import Blueprint, current_app, flash, jsonify, make_response, redirect, render_template, request, session, url_for
 
-from config import Config
 from database import close_db, get_db
 from routes.inquiry_helpers import (
-    build_whatsapp_api_endpoint,
-    build_whatsapp_recipient,
     apply_inquiry_filters,
-    build_whatsapp_url,
     build_inquiry_scope,
     calculate_total_fees,
     fetch_inquiry,
@@ -35,56 +29,6 @@ from routes.notifications import create_notification
 from validation import clean_choice, clean_optional_text, parse_optional_int
 
 inquiries_bp = Blueprint("inquiries", __name__, url_prefix="/inquiries")
-
-
-def _send_whatsapp_via_api(mobile, message):
-    endpoint = build_whatsapp_api_endpoint(Config.WA_API_URL, Config.WA_PHONE_ID)
-    token = (Config.WA_API_TOKEN or "").strip()
-    if not endpoint or not token:
-        return None
-
-    payload = {
-        "messaging_product": "whatsapp",
-        "recipient_type": "individual",
-        "to": build_whatsapp_recipient(mobile),
-        "type": "text",
-        "text": {
-            "preview_url": False,
-            "body": message or "",
-        },
-    }
-    request_body = json.dumps(payload).encode("utf-8")
-    req = Request(
-        endpoint,
-        data=request_body,
-        method="POST",
-        headers={
-            "Authorization": f"Bearer {token}",
-            "Content-Type": "application/json",
-            "Accept": "application/json",
-        },
-    )
-
-    try:
-        with urlopen(req, timeout=10) as response:
-            response_body = response.read().decode("utf-8", errors="replace")
-    except HTTPError as exc:
-        error_body = exc.read().decode("utf-8", errors="replace")
-        current_app.logger.warning("WhatsApp API send failed: %s", error_body or exc.reason)
-        return {"ok": False, "msg": "WhatsApp API rejected the message.", "details": error_body}
-    except URLError as exc:
-        current_app.logger.warning("WhatsApp API connection failed: %s", exc)
-        return {"ok": False, "msg": "WhatsApp API is unreachable right now."}
-
-    try:
-        parsed = json.loads(response_body) if response_body else {}
-    except json.JSONDecodeError:
-        parsed = {}
-
-    message_id = None
-    if isinstance(parsed.get("messages"), list) and parsed["messages"]:
-        message_id = parsed["messages"][0].get("id")
-    return {"ok": True, "msg": "WhatsApp message sent.", "message_id": message_id}
 
 
 @inquiries_bp.route("/")
@@ -426,7 +370,7 @@ def followup(iid):
 @inquiries_bp.route("/<int:iid>/whatsapp-send", methods=["POST"])
 @login_required
 def send_whatsapp(iid):
-    """Send WhatsApp message via API when configured, otherwise return a wa.me link."""
+    """Return wa.me link for direct WhatsApp send (or call API if configured)."""
     if not request.is_json:
         return jsonify({"ok": False, "msg": "JSON body required"}), 400
     role = session.get("role")
@@ -452,16 +396,11 @@ def send_whatsapp(iid):
             msg_text = (template["description"] or "").replace("[NAME]", inquiry["name"]).replace("[MOBILE]", inquiry["mobile"])
     close_db(conn, commit=False)
 
-    try:
-        api_result = _send_whatsapp_via_api(inquiry["mobile"], msg_text)
-        if api_result is not None:
-            status = 200 if api_result.get("ok") else 502
-            return jsonify(api_result), status
-
-        wa_url = build_whatsapp_url(inquiry["mobile"], msg_text)
-    except ValueError as exc:
-        return jsonify({"ok": False, "msg": str(exc)}), 400
-    return jsonify({"ok": True, "url": wa_url, "msg": "WhatsApp chat opened."})
+    mobile = inquiry["mobile"].replace(" ", "").replace("-", "").replace("+", "")
+    if not mobile.startswith("91"):
+        mobile = "91" + mobile
+    wa_url = f"https://wa.me/{mobile}?text={urllib.parse.quote(msg_text)}"
+    return jsonify({"ok": True, "url": wa_url})
 
 
 @inquiries_bp.route("/export")

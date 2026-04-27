@@ -127,7 +127,7 @@ def delete(mid):
 @whatsapp_bp.route("/api/templates")
 @login_required
 def api_templates():
-    if session.get("role") not in {"admin", "developer", "teacher"}:
+    if session.get("role") not in {"admin", "developer"}:
         return jsonify({"ok": False, "msg": "Permission denied."}), 403
 
     try:

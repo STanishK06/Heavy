@@ -2,7 +2,6 @@
 inquiry_helpers.py - shared helpers for inquiry routes
 """
 from datetime import date, timedelta
-from urllib.parse import quote
 
 from flask import render_template
 
@@ -171,38 +170,6 @@ def normalize_mobile(value):
     if len(digits) != 10:
         raise ValueError("Mobile must be a valid 10-digit number.")
     return digits
-
-
-def build_whatsapp_url(mobile, message, *, country_code="91"):
-    normalized_mobile = normalize_mobile(mobile)
-    digits = "".join(ch for ch in str(country_code or "") if ch.isdigit())
-    if not digits:
-        digits = "91"
-    encoded_message = quote(str(message or ""))
-    return f"https://wa.me/{digits}{normalized_mobile}?text={encoded_message}"
-
-
-def build_whatsapp_recipient(mobile, *, country_code="91"):
-    normalized_mobile = normalize_mobile(mobile)
-    digits = "".join(ch for ch in str(country_code or "") if ch.isdigit())
-    if not digits:
-        digits = "91"
-    return f"{digits}{normalized_mobile}"
-
-
-def build_whatsapp_api_endpoint(api_url, phone_id):
-    base = str(api_url or "").strip().rstrip("/")
-    if not base:
-        return ""
-    if "{phone_id}" in base:
-        return base.format(phone_id="".join(ch for ch in str(phone_id or "") if ch.isdigit()))
-    if base.endswith("/messages"):
-        return base
-
-    normalized_phone_id = "".join(ch for ch in str(phone_id or "") if ch.isdigit())
-    if not normalized_phone_id:
-        return ""
-    return f"{base}/{normalized_phone_id}/messages"
 
 
 def normalize_optional_mobile(value, field_name):

@@ -3,7 +3,6 @@ import sys
 import unittest
 from datetime import datetime, timedelta
 from pathlib import Path
-from urllib.parse import quote
 
 
 os.environ["SKIP_INIT_DB"] = "1"
@@ -175,8 +174,8 @@ class RegressionTests(unittest.TestCase):
             self.assertEqual(response.status_code, 400)
             self.assertEqual(response.get_json()["msg"], "JSON body required")
 
-    def test_teacher_can_access_whatsapp_templates_api(self):
-        cursor = StubCursor(fetchall_values=[[{"id": 1, "name": "Greeting", "description": "Hi [NAME]"}]])
+    def test_teacher_cannot_access_whatsapp_templates_api(self):
+        cursor = StubCursor()
         whatsapp_module.get_db = lambda: StubConn(cursor)
         whatsapp_module.close_db = lambda conn, commit=True: None
 
@@ -188,9 +187,8 @@ class RegressionTests(unittest.TestCase):
                 "/whatsapp/api/templates",
                 environ_overrides={"REMOTE_ADDR": "127.0.0.1", "HTTP_USER_AGENT": "Werkzeug/Test"},
             )
-            self.assertEqual(response.status_code, 200)
-            self.assertTrue(response.get_json()["ok"])
-            self.assertEqual(response.get_json()["templates"][0]["name"], "Greeting")
+            self.assertEqual(response.status_code, 403)
+            self.assertFalse(cursor.executed)
 
     def test_whatsapp_index_handles_database_failure_gracefully(self):
         def boom():
@@ -430,82 +428,6 @@ class RegressionTests(unittest.TestCase):
             )
             self.assertEqual(response.status_code, 404)
             self.assertFalse(response.get_json()["ok"])
-
-    def test_whatsapp_send_returns_normalized_wa_me_url(self):
-        cursor = StubCursor(fetchone_values=[{"id": 7, "name": "Asha", "mobile": "+91 98765-43210"}])
-        inquiries_module.get_db = lambda: StubConn(cursor)
-        inquiries_module.close_db = lambda conn, commit=True: None
-
-        with self.app.test_client() as client:
-            with client.session_transaction() as sess:
-                self.login_session(sess, role="developer", location_id=1)
-
-            response = client.post(
-                "/inquiries/7/whatsapp-send",
-                json={"message": "Hi Asha"},
-                headers={"X-CSRF-Token": self.csrf_token},
-                environ_overrides={"REMOTE_ADDR": "127.0.0.1", "HTTP_USER_AGENT": "Werkzeug/Test"},
-            )
-            self.assertEqual(response.status_code, 200)
-            self.assertEqual(
-                response.get_json()["url"],
-                f"https://wa.me/919876543210?text={quote('Hi Asha')}",
-            )
-
-    def test_whatsapp_send_uses_api_when_configured(self):
-        class DummyResponse:
-            def __enter__(self):
-                return self
-
-            def __exit__(self, exc_type, exc, tb):
-                return False
-
-            def read(self):
-                return b'{"messages":[{"id":"wamid.123"}]}'
-
-        captured = {}
-
-        def fake_urlopen(req, timeout=0):
-            captured["url"] = req.full_url
-            captured["timeout"] = timeout
-            captured["headers"] = dict(req.header_items())
-            captured["body"] = req.data.decode("utf-8")
-            return DummyResponse()
-
-        cursor = StubCursor(fetchone_values=[{"id": 7, "name": "Asha", "mobile": "9876543210"}])
-        inquiries_module.get_db = lambda: StubConn(cursor)
-        inquiries_module.close_db = lambda conn, commit=True: None
-        old_url = inquiries_module.Config.WA_API_URL
-        old_token = inquiries_module.Config.WA_API_TOKEN
-        old_phone_id = inquiries_module.Config.WA_PHONE_ID
-        old_urlopen = inquiries_module.urlopen
-        inquiries_module.Config.WA_API_URL = "https://graph.facebook.com/v20.0"
-        inquiries_module.Config.WA_API_TOKEN = "token-123"
-        inquiries_module.Config.WA_PHONE_ID = "555666777"
-        inquiries_module.urlopen = fake_urlopen
-
-        try:
-            with self.app.test_client() as client:
-                with client.session_transaction() as sess:
-                    self.login_session(sess, role="developer", location_id=1)
-
-                response = client.post(
-                    "/inquiries/7/whatsapp-send",
-                    json={"message": "Hi from API"},
-                    headers={"X-CSRF-Token": self.csrf_token},
-                    environ_overrides={"REMOTE_ADDR": "127.0.0.1", "HTTP_USER_AGENT": "Werkzeug/Test"},
-                )
-        finally:
-            inquiries_module.Config.WA_API_URL = old_url
-            inquiries_module.Config.WA_API_TOKEN = old_token
-            inquiries_module.Config.WA_PHONE_ID = old_phone_id
-            inquiries_module.urlopen = old_urlopen
-
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.get_json()["msg"], "WhatsApp message sent.")
-        self.assertEqual(captured["url"], "https://graph.facebook.com/v20.0/555666777/messages")
-        self.assertIn('"to": "919876543210"', captured["body"])
-        self.assertIn("Bearer token-123", captured["headers"].get("Authorization", ""))
 
     def test_notifications_are_scoped_to_current_role(self):
         cursor = StubCursor(

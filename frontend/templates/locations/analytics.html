@@ -79,7 +79,7 @@
             <div class="action-cell">
               <a href="{{ url_for('inquiries.edit', iid=inq.id) }}" class="action-btn btn-edit" title="Edit"><i class="fa-solid fa-pen"></i></a>
               <a href="{{ url_for('inquiries.followup', iid=inq.id) }}" class="action-btn btn-followup" title="Follow-up"><i class="fa-solid fa-phone"></i></a>
-              <button class="action-btn btn-whatsapp" type="button" title="WhatsApp" data-wa-open data-wa-id="{{ inq.id }}" data-wa-name="{{ inq.name }}" data-wa-mobile="{{ inq.mobile }}" onclick='openWaModal({{ inq.id|tojson }}, {{ inq.name|tojson }}, {{ inq.mobile|tojson }})'><i class="fa-brands fa-whatsapp"></i></button>
+              <button class="action-btn btn-whatsapp" onclick="openWaModal({{ inq.id }},'{{ inq.name }}','{{ inq.mobile }}')" title="WhatsApp"><i class="fa-brands fa-whatsapp"></i></button>
             </div>
           </td>
         </tr>
