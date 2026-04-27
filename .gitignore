@@ -1,10 +1,41 @@
-backend/.env
-backend/venv/
-backend/.cache/
-backend/__pycache__/
-frontend/__pycache__/
-**/__pycache__/
-*.pyc
-*.pyo
-*.log
+# Python bytecode and caches
+__pycache__/
+*.py[cod]
+*$py.class
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+backend/venv/
+
+# Secrets and local environment files
+.env
+*.env
+!.env.example
+backend/.env
+backend/.env.*
+!backend/.env.example
+
+# Build, coverage, and audit artifacts
+.cache/
+backend/.cache/
+htmlcov/
+.coverage
+.coverage.*
+
+# Runtime logs
+*.log
+*.err.log
+*.out.log
+logs/
+
+# OS and editor noise
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

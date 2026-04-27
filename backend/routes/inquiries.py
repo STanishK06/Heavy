@@ -4,168 +4,87 @@ Features: auto-followup notification, optional refs, offer linkage, WhatsApp, Ex
 """
 from datetime import date, timedelta
 import io
-import urllib.parse
+import json
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
 
 from flask import Blueprint, current_app, flash, jsonify, make_response, redirect, render_template, request, session, url_for
 
+from config import Config
 from database import close_db, get_db
+from routes.inquiry_helpers import (
+    build_whatsapp_api_endpoint,
+    build_whatsapp_recipient,
+    apply_inquiry_filters,
+    build_whatsapp_url,
+    build_inquiry_scope,
+    calculate_total_fees,
+    fetch_inquiry,
+    load_form_options,
+    load_index_lookups,
+    parse_amount,
+    parse_date,
+    parse_index_filters,
+    parse_sort_args,
+    render_inquiry_form,
+    validate_inquiry_form,
+    validate_teacher_form_access,
+)
 from routes.auth import login_required, role_required
 from routes.notifications import create_notification
-from validation import clean_choice, clean_optional_text, clean_text, parse_optional_int
+from validation import clean_choice, clean_optional_text, parse_optional_int
 
 inquiries_bp = Blueprint("inquiries", __name__, url_prefix="/inquiries")
 
 
-def _scope(role, loc_id, uid):
-    base = (
-        "FROM inquiries i "
-        "LEFT JOIN locations l ON i.location_id=l.id "
-        "LEFT JOIN courses c ON i.course_id=c.id "
-        "LEFT JOIN offers o ON i.offer_id=o.id "
-        "WHERE 1=1"
-    )
-    params = []
-    if role == "teacher" and loc_id:
-        base += " AND i.location_id=%s"
-        params.append(loc_id)
-    return base, params
-
-
-def _fetch_inquiry(cur, iid, role, loc_id, with_joins=False):
-    select_sql = "i.*"
-    joins_sql = ""
-    if with_joins:
-        select_sql = "i.*, l.name AS location_name, c.name AS course_name"
-        joins_sql = (
-            " LEFT JOIN locations l ON i.location_id=l.id"
-            " LEFT JOIN courses c ON i.course_id=c.id"
-        )
-
-    query = f"SELECT {select_sql} FROM inquiries i{joins_sql} WHERE i.id=%s"
-    params = [iid]
-    if role == "teacher" and loc_id:
-        query += " AND i.location_id=%s"
-        params.append(loc_id)
-    cur.execute(query + ";", params)
-    return cur.fetchone()
-
-
-def _normalize_mobile(value):
-    digits = "".join(ch for ch in (value or "") if ch.isdigit())
-    if len(digits) == 12 and digits.startswith("91"):
-        digits = digits[2:]
-    if len(digits) != 10:
-        raise ValueError("Mobile must be a valid 10-digit number.")
-    return digits
-
-
-def _normalize_optional_mobile(value, field_name):
-    return clean_optional_text(value, field_name, max_length=20)
-
-
-def _render_inquiry_form(*, inquiry, locations, courses, offers, defaults, action, form_data=None, form_error_popup=None):
-    return render_template(
-        "inquiries/form.html",
-        inquiry=inquiry,
-        locations=locations,
-        courses=courses,
-        offers=offers,
-        defaults=defaults,
-        action=action,
-        form_data=form_data or {},
-        form_error_popup=form_error_popup,
-    )
-
-
-def _parse_amount(value, field_name):
-    raw = str(value or "0").replace(",", "").strip()
-    try:
-        amount = float(raw or 0)
-    except ValueError as exc:
-        raise ValueError(f"{field_name} must be a valid number.") from exc
-    if amount < 0:
-        raise ValueError(f"{field_name} cannot be negative.")
-    return amount
-
-
-def _parse_date(value, field_name, required=False):
-    raw = (value or "").strip()
-    if not raw:
-        if required:
-            raise ValueError(f"{field_name} is required.")
+def _send_whatsapp_via_api(mobile, message):
+    endpoint = build_whatsapp_api_endpoint(Config.WA_API_URL, Config.WA_PHONE_ID)
+    token = (Config.WA_API_TOKEN or "").strip()
+    if not endpoint or not token:
         return None
-    try:
-        return date.fromisoformat(raw)
-    except ValueError as exc:
-        raise ValueError(f"{field_name} must be a valid date.") from exc
 
-
-def _validate_inquiry_form(form, fees_total):
-    name = clean_text(form.get("name"), "Name", required=True, max_length=120)
-    mobile = _normalize_mobile(form.get("mobile"))
-    inquiry_date = _parse_date(form.get("inquiry_date"), "Inquiry date", required=True)
-    followup_date = _parse_date(form.get("followup_date"), "Follow-up date")
-    admission_date = _parse_date(form.get("admission_date"), "Admission date")
-    fees_paid = _parse_amount(form.get("fees_paid", "0"), "Fees paid")
-    gender = clean_choice(form.get("gender"), "Gender", {"Male", "Female", "Other"}, required=False)
-    status = clean_choice(form.get("status", "Open"), "Status", {"Open", "Converted", "Closed"})
-    city = clean_optional_text(form.get("city"), "City", max_length=80)
-    state = clean_optional_text(form.get("state"), "State", max_length=80)
-    ref1_name = clean_optional_text(form.get("ref1_name"), "Reference 1 name", max_length=100)
-    ref2_name = clean_optional_text(form.get("ref2_name"), "Reference 2 name", max_length=100)
-    ref3_name = clean_optional_text(form.get("ref3_name"), "Reference 3 name", max_length=100)
-    ref1_mobile = _normalize_optional_mobile(form.get("ref1_mobile"), "Reference 1 mobile")
-    ref2_mobile = _normalize_optional_mobile(form.get("ref2_mobile"), "Reference 2 mobile")
-    ref3_mobile = _normalize_optional_mobile(form.get("ref3_mobile"), "Reference 3 mobile")
-
-    if followup_date and followup_date < inquiry_date:
-        raise ValueError("Follow-up date cannot be earlier than inquiry date.")
-    if admission_date and admission_date < inquiry_date:
-        raise ValueError("Admission date cannot be earlier than inquiry date.")
-    if fees_paid > fees_total:
-        raise ValueError("Fees paid cannot be greater than total fees.")
-
-    return {
-        "name": name,
-        "mobile": mobile,
-        "gender": gender,
-        "status": status,
-        "city": city,
-        "state": state,
-        "inquiry_date": inquiry_date.isoformat(),
-        "followup_date": followup_date.isoformat() if followup_date else None,
-        "admission_date": admission_date.isoformat() if admission_date else None,
-        "fees_paid": fees_paid,
-        "ref1_name": ref1_name,
-        "ref1_mobile": ref1_mobile,
-        "ref2_name": ref2_name,
-        "ref2_mobile": ref2_mobile,
-        "ref3_name": ref3_name,
-        "ref3_mobile": ref3_mobile,
+    payload = {
+        "messaging_product": "whatsapp",
+        "recipient_type": "individual",
+        "to": build_whatsapp_recipient(mobile),
+        "type": "text",
+        "text": {
+            "preview_url": False,
+            "body": message or "",
+        },
     }
+    request_body = json.dumps(payload).encode("utf-8")
+    req = Request(
+        endpoint,
+        data=request_body,
+        method="POST",
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        },
+    )
 
-
-def _calculate_total_fees(course_id, offer_id):
-    if not course_id:
-        return 0.0
-
-    conn = get_db()
-    cur = conn.cursor()
     try:
-        cur.execute("SELECT fees FROM courses WHERE id=%s;", (course_id,))
-        row = cur.fetchone()
-        fees_total = float(row["fees"]) if row else 0.0
-        if offer_id:
-            cur.execute("SELECT discount_type,discount_value FROM offers WHERE id=%s;", (offer_id,))
-            offer = cur.fetchone()
-            if offer:
-                if offer["discount_type"] == "percent":
-                    fees_total -= fees_total * float(offer["discount_value"]) / 100
-                else:
-                    fees_total -= float(offer["discount_value"])
-        return max(0.0, fees_total)
-    finally:
-        close_db(conn, commit=False)
+        with urlopen(req, timeout=10) as response:
+            response_body = response.read().decode("utf-8", errors="replace")
+    except HTTPError as exc:
+        error_body = exc.read().decode("utf-8", errors="replace")
+        current_app.logger.warning("WhatsApp API send failed: %s", error_body or exc.reason)
+        return {"ok": False, "msg": "WhatsApp API rejected the message.", "details": error_body}
+    except URLError as exc:
+        current_app.logger.warning("WhatsApp API connection failed: %s", exc)
+        return {"ok": False, "msg": "WhatsApp API is unreachable right now."}
+
+    try:
+        parsed = json.loads(response_body) if response_body else {}
+    except json.JSONDecodeError:
+        parsed = {}
+
+    message_id = None
+    if isinstance(parsed.get("messages"), list) and parsed["messages"]:
+        message_id = parsed["messages"][0].get("id")
+    return {"ok": True, "msg": "WhatsApp message sent.", "message_id": message_id}
 
 
 @inquiries_bp.route("/")
@@ -173,70 +92,19 @@ def _calculate_total_fees(course_id, offer_id):
 def index():
     role = session.get("role")
     loc_id = session.get("location_id")
-    uid = session.get("user_id")
-    raw_status = clean_text(request.args.get("status", ""), "Status", max_length=20)
-    status_filter = raw_status if raw_status in {"", "Open", "Converted", "Closed"} else ""
-    filters = {
-        "name": clean_text(request.args.get("name", ""), "Name", max_length=120),
-        "mobile": clean_text(request.args.get("mobile", ""), "Mobile", max_length=20),
-        "location": clean_text(request.args.get("location", ""), "Location", max_length=100),
-        "course": clean_text(request.args.get("course", ""), "Course", max_length=100),
-        "status": status_filter,
-        "date_from": clean_text(request.args.get("date_from", ""), "Date from", max_length=20),
-        "date_to": clean_text(request.args.get("date_to", ""), "Date to", max_length=20),
-        "last_days": clean_text(request.args.get("last_days", ""), "Last days", max_length=4),
-    }
-    sort_col = request.args.get("sort", "i.inquiry_date")
-    sort_dir = request.args.get("dir", "desc")
-    allowed = {"i.inquiry_date", "i.name", "i.mobile", "l.name", "c.name", "i.status", "i.followup_date"}
-    if sort_col not in allowed:
-        sort_col = "i.inquiry_date"
-    if sort_dir not in ("asc", "desc"):
-        sort_dir = "desc"
+    filters = parse_index_filters(request.args)
+    sort_col, sort_dir = parse_sort_args(request.args)
 
-    base, params = _scope(role, loc_id, uid)
-    if filters["name"]:
-        base += " AND i.name ILIKE %s"
-        params.append(f"%{filters['name']}%")
-    if filters["mobile"]:
-        base += " AND i.mobile ILIKE %s"
-        params.append(f"%{filters['mobile']}%")
-    if filters["location"]:
-        base += " AND l.name ILIKE %s"
-        params.append(f"%{filters['location']}%")
-    if filters["course"]:
-        base += " AND c.name ILIKE %s"
-        params.append(f"%{filters['course']}%")
-    if filters["status"]:
-        base += " AND i.status=%s"
-        params.append(filters["status"])
-    if filters["last_days"]:
-        try:
-            base += " AND i.inquiry_date >= %s"
-            params.append(date.today() - timedelta(days=int(filters["last_days"])))
-        except ValueError:
-            flash("Last X Days must be a valid number.", "warning")
-    if filters["date_from"]:
-        base += " AND i.inquiry_date >= %s"
-        params.append(filters["date_from"])
-    if filters["date_to"]:
-        base += " AND i.inquiry_date <= %s"
-        params.append(filters["date_to"])
+    base, params = build_inquiry_scope(role, loc_id)
+    base, params, warnings = apply_inquiry_filters(base, params, filters)
+    for warning in warnings:
+        flash(warning, "warning")
 
     conn = get_db()
     cur = conn.cursor()
     cur.execute(f"SELECT i.*,l.name AS location_name,c.name AS course_name,o.name AS offer_name {base} ORDER BY {sort_col} {sort_dir};", params)
     inquiries = cur.fetchall()
-    if role == "teacher" and loc_id:
-        cur.execute("SELECT id,name FROM locations WHERE id=%s ORDER BY position,name;", (loc_id,))
-        locations = cur.fetchall()
-        cur.execute("SELECT id,name FROM courses WHERE location_id=%s ORDER BY position,name;", (loc_id,))
-        courses = cur.fetchall()
-    else:
-        cur.execute("SELECT id,name FROM locations ORDER BY position,name;")
-        locations = cur.fetchall()
-        cur.execute("SELECT id,name FROM courses ORDER BY position,name;")
-        courses = cur.fetchall()
+    locations, courses = load_index_lookups(cur, role, loc_id)
     close_db(conn, commit=False)
     return render_template(
         "inquiries/index.html",
@@ -258,29 +126,7 @@ def add():
     assigned_loc_id = session.get("location_id")
     conn = get_db()
     cur = conn.cursor()
-    if role == "teacher" and assigned_loc_id:
-        cur.execute("SELECT id,name FROM locations WHERE id=%s ORDER BY position,name;", (assigned_loc_id,))
-        locs = cur.fetchall()
-        cur.execute("SELECT id,name,fees FROM courses WHERE location_id=%s ORDER BY position,name;", (assigned_loc_id,))
-        courses_list = cur.fetchall()
-    else:
-        cur.execute("SELECT id,name FROM locations ORDER BY position,name;")
-        locs = cur.fetchall()
-        cur.execute("SELECT id,name,fees FROM courses ORDER BY position,name;")
-        courses_list = cur.fetchall()
-    if role == "teacher" and assigned_loc_id:
-        cur.execute(
-            "SELECT id,name,discount_type,discount_value FROM offers "
-            "WHERE is_active=TRUE AND (valid_to IS NULL OR valid_to >= CURRENT_DATE) "
-            "AND (location_id IS NULL OR location_id=%s) ORDER BY name;",
-            (assigned_loc_id,),
-        )
-    else:
-        cur.execute(
-            "SELECT id,name,discount_type,discount_value FROM offers "
-            "WHERE is_active=TRUE AND (valid_to IS NULL OR valid_to >= CURRENT_DATE) ORDER BY name;"
-        )
-    offers = cur.fetchall()
+    locs, courses_list, offers = load_form_options(cur, role, assigned_loc_id)
     close_db(conn, commit=False)
 
     defaults = {
@@ -296,23 +142,13 @@ def add():
                 location_id = assigned_loc_id
             course_id = parse_optional_int(form.get("course_id"), "Course")
             offer_id = parse_optional_int(form.get("offer_id"), "Offer")
-            fees_total = _calculate_total_fees(course_id, offer_id)
-            cleaned = _validate_inquiry_form(form, fees_total)
+            fees_total = calculate_total_fees(course_id, offer_id)
+            cleaned = validate_inquiry_form(form, fees_total)
             if role == "teacher" and assigned_loc_id:
                 conn_check = get_db()
                 cur_check = conn_check.cursor()
                 try:
-                    if course_id:
-                        cur_check.execute("SELECT 1 FROM courses WHERE id=%s AND location_id=%s;", (course_id, assigned_loc_id))
-                        if not cur_check.fetchone():
-                            raise ValueError("You can only use courses from your assigned location.")
-                    if offer_id:
-                        cur_check.execute(
-                            "SELECT 1 FROM offers WHERE id=%s AND (location_id IS NULL OR location_id=%s);",
-                            (offer_id, assigned_loc_id),
-                        )
-                        if not cur_check.fetchone():
-                            raise ValueError("You can only use offers available to your assigned location.")
+                    validate_teacher_form_access(cur_check, course_id, offer_id, assigned_loc_id)
                 finally:
                     close_db(conn_check, commit=False)
             conn = get_db()
@@ -358,7 +194,7 @@ def add():
             return redirect(url_for("inquiries.index"))
         except ValueError as exc:
             flash(str(exc), "danger")
-            return _render_inquiry_form(
+            return render_inquiry_form(
                 inquiry=None,
                 locations=locs,
                 courses=courses_list,
@@ -372,7 +208,7 @@ def add():
             current_app.logger.exception("Failed to add inquiry")
             message = "Unable to save inquiry right now."
             flash(message, "danger")
-            return _render_inquiry_form(
+            return render_inquiry_form(
                 inquiry=None,
                 locations=locs,
                 courses=courses_list,
@@ -383,7 +219,7 @@ def add():
                 form_error_popup=message,
             )
 
-    return _render_inquiry_form(
+    return render_inquiry_form(
         inquiry=None,
         locations=locs,
         courses=courses_list,
@@ -401,25 +237,8 @@ def edit(iid):
     loc_id = session.get("location_id")
     conn = get_db()
     cur = conn.cursor()
-    inquiry = _fetch_inquiry(cur, iid, role, loc_id)
-    if role == "teacher" and loc_id:
-        cur.execute("SELECT id,name FROM locations WHERE id=%s ORDER BY position,name;", (loc_id,))
-        locs = cur.fetchall()
-        cur.execute("SELECT id,name,fees FROM courses WHERE location_id=%s ORDER BY position,name;", (loc_id,))
-        courses_list = cur.fetchall()
-        cur.execute(
-            "SELECT id,name,discount_type,discount_value FROM offers "
-            "WHERE is_active=TRUE AND (location_id IS NULL OR location_id=%s) ORDER BY name;",
-            (loc_id,),
-        )
-        offers = cur.fetchall()
-    else:
-        cur.execute("SELECT id,name FROM locations ORDER BY position,name;")
-        locs = cur.fetchall()
-        cur.execute("SELECT id,name,fees FROM courses ORDER BY position,name;")
-        courses_list = cur.fetchall()
-        cur.execute("SELECT id,name,discount_type,discount_value FROM offers WHERE is_active=TRUE ORDER BY name;")
-        offers = cur.fetchall()
+    inquiry = fetch_inquiry(cur, iid, role, loc_id)
+    locs, courses_list, offers = load_form_options(cur, role, loc_id)
     close_db(conn, commit=False)
     if not inquiry:
         flash("Not found.", "danger")
@@ -428,31 +247,23 @@ def edit(iid):
     if request.method == "POST":
         form = request.form
         try:
-            fees_total = _parse_amount(form.get("fees_total", "0"), "Fees total")
-            cleaned = _validate_inquiry_form(form, fees_total)
+            fees_total = parse_amount(form.get("fees_total", "0"), "Fees total")
+            cleaned = validate_inquiry_form(form, fees_total)
             location_id = parse_optional_int(form.get("location_id"), "Location")
             course_id = parse_optional_int(form.get("course_id"), "Course")
             offer_id = parse_optional_int(form.get("offer_id"), "Offer")
             conn = get_db()
             cur = conn.cursor()
-            if not _fetch_inquiry(cur, iid, role, loc_id):
+            if not fetch_inquiry(cur, iid, role, loc_id):
                 close_db(conn, commit=False)
                 flash("Not found.", "danger")
                 return redirect(url_for("inquiries.index"))
             if role == "teacher" and loc_id:
-                if course_id:
-                    cur.execute("SELECT 1 FROM courses WHERE id=%s AND location_id=%s;", (course_id, loc_id))
-                    if not cur.fetchone():
-                        close_db(conn, commit=False)
-                        raise ValueError("You can only use courses from your assigned location.")
-                if offer_id:
-                    cur.execute(
-                        "SELECT 1 FROM offers WHERE id=%s AND (location_id IS NULL OR location_id=%s);",
-                        (offer_id, loc_id),
-                    )
-                    if not cur.fetchone():
-                        close_db(conn, commit=False)
-                        raise ValueError("You can only use offers available to your assigned location.")
+                try:
+                    validate_teacher_form_access(cur, course_id, offer_id, loc_id)
+                except ValueError:
+                    close_db(conn, commit=False)
+                    raise
             cur.execute(
                 """
                 UPDATE inquiries SET
@@ -492,7 +303,7 @@ def edit(iid):
             return redirect(url_for("inquiries.index"))
         except ValueError as exc:
             flash(str(exc), "danger")
-            return _render_inquiry_form(
+            return render_inquiry_form(
                 inquiry=inquiry,
                 locations=locs,
                 courses=courses_list,
@@ -506,7 +317,7 @@ def edit(iid):
             current_app.logger.exception("Failed to update inquiry %s", iid)
             message = "Unable to update inquiry right now."
             flash(message, "danger")
-            return _render_inquiry_form(
+            return render_inquiry_form(
                 inquiry=inquiry,
                 locations=locs,
                 courses=courses_list,
@@ -517,7 +328,7 @@ def edit(iid):
                 form_error_popup=message,
             )
 
-    return _render_inquiry_form(
+    return render_inquiry_form(
         inquiry=inquiry,
         locations=locs,
         courses=courses_list,
@@ -547,7 +358,7 @@ def convert(iid):
     loc_id = session.get("location_id")
     conn = get_db()
     cur = conn.cursor()
-    inquiry = _fetch_inquiry(cur, iid, role, loc_id)
+    inquiry = fetch_inquiry(cur, iid, role, loc_id)
     if not inquiry:
         close_db(conn, commit=False)
         flash("Not found.", "danger")
@@ -570,7 +381,7 @@ def followup(iid):
     loc_id = session.get("location_id")
     conn = get_db()
     cur = conn.cursor()
-    inquiry = _fetch_inquiry(cur, iid, role, loc_id, with_joins=True)
+    inquiry = fetch_inquiry(cur, iid, role, loc_id, with_joins=True)
     if not inquiry:
         close_db(conn, commit=False)
         flash("Not found.", "danger")
@@ -579,9 +390,9 @@ def followup(iid):
     if request.method == "POST":
         try:
             conversation = clean_optional_text(request.form.get("conversation", ""), "Conversation", max_length=4000, multiline=True)
-            followup_date = _parse_date(request.form.get("followup_date"), "Follow-up date")
+            followup_date = parse_date(request.form.get("followup_date"), "Follow-up date")
             status = clean_choice(request.form.get("status", inquiry["status"]), "Status", {"Open", "Converted", "Closed"})
-            admission_date = _parse_date(request.form.get("admission_date"), "Admission date")
+            admission_date = parse_date(request.form.get("admission_date"), "Admission date")
             if followup_date and followup_date < inquiry["inquiry_date"]:
                 raise ValueError("Follow-up date cannot be earlier than inquiry date.")
             if admission_date and admission_date < inquiry["inquiry_date"]:
@@ -615,7 +426,7 @@ def followup(iid):
 @inquiries_bp.route("/<int:iid>/whatsapp-send", methods=["POST"])
 @login_required
 def send_whatsapp(iid):
-    """Return wa.me link for direct WhatsApp send (or call API if configured)."""
+    """Send WhatsApp message via API when configured, otherwise return a wa.me link."""
     if not request.is_json:
         return jsonify({"ok": False, "msg": "JSON body required"}), 400
     role = session.get("role")
@@ -623,7 +434,7 @@ def send_whatsapp(iid):
     payload = request.get_json(silent=True) or {}
     conn = get_db()
     cur = conn.cursor()
-    inquiry = _fetch_inquiry(cur, iid, role, loc_id)
+    inquiry = fetch_inquiry(cur, iid, role, loc_id)
     if not inquiry:
         close_db(conn, commit=False)
         return jsonify({"ok": False, "msg": "Not found"}), 404
@@ -641,11 +452,16 @@ def send_whatsapp(iid):
             msg_text = (template["description"] or "").replace("[NAME]", inquiry["name"]).replace("[MOBILE]", inquiry["mobile"])
     close_db(conn, commit=False)
 
-    mobile = inquiry["mobile"].replace(" ", "").replace("-", "").replace("+", "")
-    if not mobile.startswith("91"):
-        mobile = "91" + mobile
-    wa_url = f"https://wa.me/{mobile}?text={urllib.parse.quote(msg_text)}"
-    return jsonify({"ok": True, "url": wa_url})
+    try:
+        api_result = _send_whatsapp_via_api(inquiry["mobile"], msg_text)
+        if api_result is not None:
+            status = 200 if api_result.get("ok") else 502
+            return jsonify(api_result), status
+
+        wa_url = build_whatsapp_url(inquiry["mobile"], msg_text)
+    except ValueError as exc:
+        return jsonify({"ok": False, "msg": str(exc)}), 400
+    return jsonify({"ok": True, "url": wa_url, "msg": "WhatsApp chat opened."})
 
 
 @inquiries_bp.route("/export")
@@ -657,8 +473,7 @@ def export():
 
     role = session.get("role")
     loc_id = session.get("location_id")
-    uid = session.get("user_id")
-    base, params = _scope(role, loc_id, uid)
+    base, params = build_inquiry_scope(role, loc_id)
     conn = get_db()
     cur = conn.cursor()
     cur.execute(f"SELECT i.*,l.name AS location_name,c.name AS course_name {base} ORDER BY i.inquiry_date DESC;", params)
