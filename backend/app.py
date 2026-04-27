@@ -214,6 +214,9 @@ def protect_csrf():
         return None
     token = session.get("_csrf_token")
     candidate = request.headers.get("X-CSRF-Token") or request.form.get("csrf_token")
+    if not candidate and request.is_json:
+        payload = request.get_json(silent=True) or {}
+        candidate = payload.get("csrf_token")
     if not token or not candidate or not secrets.compare_digest(candidate, token):
         abort(400, description="CSRF validation failed.")
     return None

@@ -1,5 +1,5 @@
 (function () {
-  let whatsappTemplatesCache = null;
+  let whatsappTemplatesCache = [];
 
   function closeModal(id) {
     document.getElementById(id)?.classList.remove('open');
@@ -57,23 +57,19 @@
     const msgEl = modal.querySelector('#wa_message');
     bindTemplateSelection(sel, msgEl, name, mobile);
 
-    if (whatsappTemplatesCache === null) {
-      try {
-        const response = await fetch('/whatsapp/api/templates');
-        const data = await response.json();
-        if (!response.ok || !data.ok) {
-          whatsappTemplatesCache = [];
-        } else {
-          whatsappTemplatesCache = Array.isArray(data.templates) ? data.templates : [];
-        }
-      } catch {
-        whatsappTemplatesCache = [];
+    try {
+      const response = await fetch('/whatsapp/api/templates');
+      const data = await response.json();
+      if (response.ok && data.ok) {
+        whatsappTemplatesCache = Array.isArray(data.templates) ? data.templates : [];
       }
+    } catch {
+      // Keep the last successfully loaded templates in memory for this page.
     }
 
     const templates = whatsappTemplatesCache;
     if (!templates.length) {
-      sel.innerHTML = '<option value="">- Manual message only -</option>';
+      sel.innerHTML = '<option value="">- Templates unavailable -</option>';
       return;
     }
 
@@ -147,7 +143,11 @@
             'Content-Type': 'application/json',
             'X-CSRF-Token': window.HeavyLift?.csrfToken || '',
           },
-          body: JSON.stringify({ msg_id: templateId || null, message: msg }),
+          body: JSON.stringify({
+            msg_id: templateId || null,
+            message: msg,
+            csrf_token: window.HeavyLift?.csrfToken || '',
+          }),
         });
         const data = await response.json();
         if (data.ok) {
