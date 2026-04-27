@@ -116,6 +116,7 @@
       const inqId = modal.querySelector('#wa_inq_id').value;
       const msg = modal.querySelector('#wa_message').value.trim();
       const templateId = modal.querySelector('#wa_template').value;
+      const popup = window.open('about:blank', '_blank', 'noopener');
       try {
         const response = await fetch(`/inquiries/${inqId}/whatsapp-send`, {
           method: 'POST',
@@ -125,19 +126,24 @@
         const data = await response.json();
         if (data.ok) {
           if (data.url) {
-            const popup = window.open(data.url, '_blank', 'noopener');
-            if (!popup) {
+            if (popup) {
+              popup.location.replace(data.url);
+            } else {
               window.location.href = data.url;
             }
+          } else if (popup) {
+            popup.close();
           }
           closeModal('waModal');
           if (data.msg) {
             alert(data.msg);
           }
         } else {
+          popup?.close();
           alert(data.msg || 'Error sending.');
         }
       } catch {
+        popup?.close();
         alert('Error connecting.');
       }
     });
