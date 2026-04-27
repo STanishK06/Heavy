@@ -3,6 +3,29 @@
     document.getElementById(id)?.classList.remove('open');
   }
 
+  function openWhatsAppFromTrigger(trigger, event) {
+    if (!trigger) {
+      return;
+    }
+    event?.preventDefault();
+    event?.stopPropagation();
+    window.openWaModal(
+      trigger.dataset.waId,
+      trigger.dataset.waName || '',
+      trigger.dataset.waMobile || '',
+    );
+  }
+
+  function bindWhatsAppTriggers(root = document) {
+    root.querySelectorAll('[data-wa-open]').forEach((trigger) => {
+      if (trigger.dataset.waBound === 'true') {
+        return;
+      }
+      trigger.dataset.waBound = 'true';
+      trigger.addEventListener('click', (event) => openWhatsAppFromTrigger(trigger, event));
+    });
+  }
+
   function resetWhatsAppModal(modal) {
     modal.querySelector('#wa_inq_id').value = '';
     modal.querySelector('#wa_name').textContent = '';
@@ -78,17 +101,14 @@
   };
 
   document.addEventListener('DOMContentLoaded', () => {
+    bindWhatsAppTriggers();
+
     document.addEventListener('click', (event) => {
       const trigger = event.target.closest('[data-wa-open]');
       if (!trigger) {
         return;
       }
-      event.preventDefault();
-      window.openWaModal(
-        trigger.dataset.waId,
-        trigger.dataset.waName || '',
-        trigger.dataset.waMobile || '',
-      );
+      openWhatsAppFromTrigger(trigger, event);
     });
 
     document.getElementById('waSendBtn')?.addEventListener('click', async () => {

@@ -11,7 +11,7 @@
         <div class="info-item"><span class="info-label">Name</span><span class="info-val">{{ inquiry.name }}</span></div>
         <div class="info-item"><span class="info-label">Mobile</span>
           <span class="info-val">{{ inquiry.mobile }}
-            <button class="btn btn-xs" type="button" style="background:#25D366;color:#fff;margin-left:6px" data-wa-open data-wa-id="{{ inquiry.id }}" data-wa-name="{{ inquiry.name }}" data-wa-mobile="{{ inquiry.mobile }}">
+            <button class="btn btn-xs" type="button" style="background:#25D366;color:#fff;margin-left:6px" data-wa-open data-wa-id="{{ inquiry.id }}" data-wa-name="{{ inquiry.name }}" data-wa-mobile="{{ inquiry.mobile }}" onclick='openWaModal({{ inquiry.id|tojson }}, {{ inquiry.name|tojson }}, {{ inquiry.mobile|tojson }})'>
               <i class="fa-brands fa-whatsapp"></i>
             </button>
           </span>
