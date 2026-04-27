@@ -1,4 +1,6 @@
 (function () {
+  let whatsappTemplatesCache = null;
+
   function closeModal(id) {
     document.getElementById(id)?.classList.remove('open');
   }
@@ -34,37 +36,51 @@
     modal.querySelector('#wa_template').innerHTML = '<option value="">- Select template -</option>';
   }
 
+  function resolveTemplateMessage(option, name, mobile) {
+    if (!option?.dataset?.msg) {
+      return '';
+    }
+    let msg = decodeURIComponent(option.dataset.msg);
+    msg = msg.replace(/\[NAME\]/g, name).replace(/\[MOBILE\]/g, mobile);
+    return msg;
+  }
+
+  function bindTemplateSelection(sel, msgEl, name, mobile) {
+    sel.onchange = () => {
+      const opt = sel.selectedOptions[0];
+      msgEl.value = resolveTemplateMessage(opt, name, mobile);
+    };
+  }
+
   async function loadWhatsAppTemplates(modal, name, mobile) {
     const sel = modal.querySelector('#wa_template');
     const msgEl = modal.querySelector('#wa_message');
+    bindTemplateSelection(sel, msgEl, name, mobile);
 
-    try {
-      const response = await fetch('/whatsapp/api/templates');
-      const data = await response.json();
-      if (!response.ok || !data.ok) {
-        sel.innerHTML = '<option value="">- Manual message only -</option>';
-        return;
+    if (whatsappTemplatesCache === null) {
+      try {
+        const response = await fetch('/whatsapp/api/templates');
+        const data = await response.json();
+        if (!response.ok || !data.ok) {
+          whatsappTemplatesCache = [];
+        } else {
+          whatsappTemplatesCache = Array.isArray(data.templates) ? data.templates : [];
+        }
+      } catch {
+        whatsappTemplatesCache = [];
       }
-
-      const templates = Array.isArray(data.templates) ? data.templates : [];
-      sel.innerHTML = '<option value="">- Select template -</option>' +
-        templates.map((template) => (
-          `<option value="${template.id}" data-msg="${encodeURIComponent(template.description || '')}">${window.HeavyLift.escHtml(template.name)}</option>`
-        )).join('');
-    } catch {
-      sel.innerHTML = '<option value="">- Manual message only -</option>';
     }
 
-    sel.onchange = () => {
-      const opt = sel.selectedOptions[0];
-      if (!opt || !opt.dataset.msg) {
-        msgEl.value = '';
-        return;
-      }
-      let msg = decodeURIComponent(opt.dataset.msg);
-      msg = msg.replace(/\[NAME\]/g, name).replace(/\[MOBILE\]/g, mobile);
-      msgEl.value = msg;
-    };
+    const templates = whatsappTemplatesCache;
+    if (!templates.length) {
+      sel.innerHTML = '<option value="">- Manual message only -</option>';
+      return;
+    }
+
+    sel.innerHTML = '<option value="">- Select template -</option>' +
+      templates.map((template) => (
+        `<option value="${template.id}" data-msg="${encodeURIComponent(template.description || '')}">${window.HeavyLift.escHtml(template.name)}</option>`
+      )).join('');
   }
 
   window.openWaModal = async function openWaModal(inqId, name, mobile) {
@@ -114,13 +130,23 @@
     document.getElementById('waSendBtn')?.addEventListener('click', async () => {
       const modal = document.getElementById('waModal');
       const inqId = modal.querySelector('#wa_inq_id').value;
-      const msg = modal.querySelector('#wa_message').value.trim();
-      const templateId = modal.querySelector('#wa_template').value;
+      const msgEl = modal.querySelector('#wa_message');
+      const templateSel = modal.querySelector('#wa_template');
+      const templateOpt = templateSel.selectedOptions[0];
+      const templateId = templateSel.value;
+      const msg = msgEl.value.trim() || resolveTemplateMessage(
+        templateOpt,
+        modal.querySelector('#wa_name').textContent,
+        modal.querySelector('#wa_mobile').textContent,
+      );
       const popup = window.open('about:blank', '_blank', 'noopener');
       try {
         const response = await fetch(`/inquiries/${inqId}/whatsapp-send`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-Token': window.HeavyLift?.csrfToken || '',
+          },
           body: JSON.stringify({ msg_id: templateId || null, message: msg }),
         });
         const data = await response.json();
