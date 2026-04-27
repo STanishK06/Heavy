@@ -1,5 +1,4 @@
 (function () {
-  let whatsappTemplatesCache = [];
 
   function closeModal(id) {
     document.getElementById(id)?.classList.remove('open');
@@ -36,47 +35,36 @@
     modal.querySelector('#wa_template').innerHTML = '<option value="">- Select template -</option>';
   }
 
-  function resolveTemplateMessage(option, name, mobile) {
-    if (!option?.dataset?.msg) {
-      return '';
-    }
-    let msg = decodeURIComponent(option.dataset.msg);
-    msg = msg.replace(/\[NAME\]/g, name).replace(/\[MOBILE\]/g, mobile);
-    return msg;
-  }
-
-  function bindTemplateSelection(sel, msgEl, name, mobile) {
-    sel.onchange = () => {
-      const opt = sel.selectedOptions[0];
-      msgEl.value = resolveTemplateMessage(opt, name, mobile);
-    };
-  }
-
   async function loadWhatsAppTemplates(modal, name, mobile) {
     const sel = modal.querySelector('#wa_template');
     const msgEl = modal.querySelector('#wa_message');
-    bindTemplateSelection(sel, msgEl, name, mobile);
-
     try {
       const response = await fetch('/whatsapp/api/templates');
       const data = await response.json();
-      if (response.ok && data.ok) {
-        whatsappTemplatesCache = Array.isArray(data.templates) ? data.templates : [];
+      if (!response.ok || !data.ok) {
+        sel.innerHTML = '<option value="">- Manual message only -</option>';
+        return;
       }
+
+      const templates = Array.isArray(data.templates) ? data.templates : [];
+      sel.innerHTML = '<option value="">- Select template -</option>' +
+        templates.map((template) => (
+          `<option value="${template.id}" data-msg="${encodeURIComponent(template.description || '')}">${window.HeavyLift.escHtml(template.name)}</option>`
+        )).join('');
     } catch {
-      // Keep the last successfully loaded templates in memory for this page.
+      sel.innerHTML = '<option value="">- Manual message only -</option>';
     }
 
-    const templates = whatsappTemplatesCache;
-    if (!templates.length) {
-      sel.innerHTML = '<option value="">- Templates unavailable -</option>';
-      return;
-    }
-
-    sel.innerHTML = '<option value="">- Select template -</option>' +
-      templates.map((template) => (
-        `<option value="${template.id}" data-msg="${encodeURIComponent(template.description || '')}">${window.HeavyLift.escHtml(template.name)}</option>`
-      )).join('');
+    sel.onchange = () => {
+      const opt = sel.selectedOptions[0];
+      if (!opt || !opt.dataset.msg) {
+        msgEl.value = '';
+        return;
+      }
+      let msg = decodeURIComponent(opt.dataset.msg);
+      msg = msg.replace(/\[NAME\]/g, name).replace(/\[MOBILE\]/g, mobile);
+      msgEl.value = msg;
+    };
   }
 
   window.openWaModal = async function openWaModal(inqId, name, mobile) {
@@ -126,50 +114,30 @@
     document.getElementById('waSendBtn')?.addEventListener('click', async () => {
       const modal = document.getElementById('waModal');
       const inqId = modal.querySelector('#wa_inq_id').value;
-      const msgEl = modal.querySelector('#wa_message');
-      const templateSel = modal.querySelector('#wa_template');
-      const templateOpt = templateSel.selectedOptions[0];
-      const templateId = templateSel.value;
-      const msg = msgEl.value.trim() || resolveTemplateMessage(
-        templateOpt,
-        modal.querySelector('#wa_name').textContent,
-        modal.querySelector('#wa_mobile').textContent,
-      );
-      const popup = window.open('about:blank', '_blank', 'noopener');
+      const msg = modal.querySelector('#wa_message').value.trim();
+      const templateId = modal.querySelector('#wa_template').value;
       try {
         const response = await fetch(`/inquiries/${inqId}/whatsapp-send`, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-CSRF-Token': window.HeavyLift?.csrfToken || '',
-          },
-          body: JSON.stringify({
-            msg_id: templateId || null,
-            message: msg,
-            csrf_token: window.HeavyLift?.csrfToken || '',
-          }),
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ msg_id: templateId || null, message: msg }),
         });
         const data = await response.json();
         if (data.ok) {
           if (data.url) {
-            if (popup) {
-              popup.location.replace(data.url);
-            } else {
+            const popup = window.open(data.url, '_blank', 'noopener');
+            if (!popup) {
               window.location.href = data.url;
             }
-          } else if (popup) {
-            popup.close();
           }
           closeModal('waModal');
           if (data.msg) {
             alert(data.msg);
           }
         } else {
-          popup?.close();
           alert(data.msg || 'Error sending.');
         }
       } catch {
-        popup?.close();
         alert('Error connecting.');
       }
     });
